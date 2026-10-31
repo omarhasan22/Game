@@ -1,0 +1,1270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mystery Picture – Plot the Points!</title>
+<style>
+  :root{
+    --ink:#1e293b; --muted:#64748b; --card:#ffffff;
+    --blue:#2563eb; --green:#16a34a; --red:#dc2626; --orange:#f97316;
+    --purple:#7c3aed; --yellow:#facc15; --pink:#db2777;
+    --radius:18px; --shadow:0 6px 18px rgba(30,41,59,.12);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:"Segoe UI","Trebuchet MS",system-ui,-apple-system,Arial,sans-serif;
+    color:var(--ink);
+    background:linear-gradient(135deg,#dbeafe 0%,#ede9fe 45%,#fef3c7 100%);
+    min-height:100vh;
+  }
+  .wrap{max-width:1400px;margin:0 auto;padding:12px 16px 24px}
+
+  /* ---------- Header ---------- */
+  header{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+  h1{margin:0;font-size:clamp(1.3rem,2.6vw,2.1rem);line-height:1.1;
+     background:linear-gradient(90deg,#2563eb,#7c3aed,#db2777);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .objective{margin:4px 0 0;color:var(--muted);font-size:.95rem}
+  .head-btns{display:flex;gap:8px}
+
+  /* ---------- Buttons ---------- */
+  .btn{
+    border:none;border-radius:14px;padding:10px 16px;font-size:1rem;font-weight:700;cursor:pointer;
+    font-family:inherit;color:#fff;background:var(--blue);box-shadow:0 4px 0 rgba(0,0,0,.18);
+    transition:transform .08s, filter .15s; touch-action:manipulation; min-height:44px;
+  }
+  .btn:hover{filter:brightness(1.08)}
+  .btn:active{transform:translateY(3px);box-shadow:0 1px 0 rgba(0,0,0,.18)}
+  .btn:disabled{background:#cbd5e1!important;color:#64748b!important;border-color:#cbd5e1!important;cursor:not-allowed;box-shadow:none;transform:none}
+  .btn.green{background:var(--green)} .btn.red{background:var(--red)} .btn.orange{background:var(--orange)}
+  .btn.purple{background:var(--purple)} .btn.ghost{background:#fff;color:var(--ink);border:2px solid #cbd5e1;box-shadow:none}
+  .btn.big{font-size:1.2rem;padding:14px 22px}
+
+  /* ---------- Timer bar ---------- */
+  .timerbar{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;
+    display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;margin-bottom:12px}
+  .clock{text-align:center;min-width:120px}
+  .clock .phase-name{font-size:.85rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  .clock .time{font-size:2.4rem;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+  .clock .total{font-size:.8rem;color:var(--muted)}
+  .clock.warn .time{color:var(--red);animation:pulse 1s infinite}
+  .steps{display:grid;grid-template-columns:1fr 2.2fr 1.2fr;gap:8px}
+  .step{border-radius:12px;padding:8px 10px;background:#f1f5f9;border:3px solid transparent;position:relative;overflow:hidden}
+  .step b{display:block;font-size:.95rem} .step span{font-size:.8rem;color:var(--muted)}
+  .step .fill{position:absolute;left:0;bottom:0;height:5px;width:0;background:var(--blue);transition:width 1s linear}
+  .step.active{border-color:var(--blue);background:#eff6ff}
+  .step.donestep{background:#dcfce7} .step.donestep .fill{width:100%;background:var(--green)}
+  .timer-btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+
+  /* ---------- Main layout ---------- */
+  main{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:14px;align-items:start}
+  .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:12px 14px}
+  .card h2{margin:0 0 8px;font-size:1.1rem}
+
+  .board-card{display:flex;flex-direction:column;align-items:center;gap:10px}
+  .readout{width:100%;display:flex;gap:10px;flex-wrap:wrap;align-items:stretch}
+  .sel-box{background:#fef9c3;border:3px dashed #eab308;border-radius:14px;padding:6px 14px;text-align:center;min-width:170px}
+  .sel-box small{display:block;font-weight:700;color:#854d0e;font-size:.8rem}
+  .sel-box .pair{font-size:1.7rem;font-weight:800;font-variant-numeric:tabular-nums}
+  .feedback{flex:1;min-width:220px;border-radius:14px;padding:10px 14px;font-weight:600;font-size:1.02rem;display:flex;align-items:center;background:#f1f5f9}
+  .feedback.ok{background:#dcfce7;color:#14532d} .feedback.bad{background:#fee2e2;color:#7f1d1d}
+  .feedback.info{background:#e0f2fe;color:#0c4a6e}
+
+  .board-wrap{position:relative;width:100%;max-width:max(340px, calc(100vh - 250px));aspect-ratio:1/1}
+  #board{width:100%;height:100%;display:block;border-radius:14px;background:#fff;cursor:crosshair;
+    touch-action:manipulation;user-select:none;-webkit-user-select:none;box-shadow:inset 0 0 0 3px #e2e8f0}
+  .board-wrap.shake{animation:shake .35s}
+  .overlay{position:absolute;inset:0;border-radius:14px;background:rgba(15,23,42,.62);color:#fff;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:20px}
+  .overlay.hidden{display:none}
+  .overlay h3{margin:0;font-size:clamp(1.2rem,3vw,1.8rem)}
+  .overlay p{margin:0;font-size:1.05rem;max-width:460px}
+  .overlay .big-count{font-size:3rem;font-weight:800}
+  .action-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;width:100%}
+
+  /* side panel */
+  .side{display:flex;flex-direction:column;gap:12px}
+  .roles{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .role{border-radius:14px;padding:8px 10px;text-align:center}
+  .role.nav{background:#ede9fe;border:3px solid var(--purple)}
+  .role.plot{background:#ffedd5;border:3px solid var(--orange)}
+  .role .r-title{font-size:.8rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+  .role .r-name{font-size:1.15rem;font-weight:800}
+  .role .r-job{font-size:.78rem;color:var(--muted)}
+  .names{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+  .names label{font-size:.75rem;color:var(--muted);font-weight:700}
+  .names input{width:100%;padding:6px 8px;border-radius:10px;border:2px solid #cbd5e1;font-size:.95rem;font-family:inherit}
+
+  .target{text-align:center;background:linear-gradient(135deg,#ede9fe,#e0f2fe);border-radius:14px;padding:10px}
+  .target .t-label{font-weight:700;color:var(--purple)}
+  .target .t-pair{font-size:2.3rem;font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+  .target .t-hint{font-size:.85rem;color:var(--muted)}
+  .xcol{color:#dc2626} .ycol{color:#2563eb}
+
+  .progress-txt{display:flex;justify-content:space-between;font-weight:700;margin:8px 0 4px;font-size:.95rem}
+  .pbar{height:16px;background:#e2e8f0;border-radius:99px;overflow:hidden}
+  .pbar div{height:100%;width:0;background:linear-gradient(90deg,#22c55e,#16a34a);transition:width .4s}
+
+  .coords{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px;margin:0;padding:0;list-style:none}
+  .coords li{border-radius:10px;padding:5px 6px;background:#f1f5f9;font-weight:700;font-size:.95rem;text-align:center;border:2px solid transparent;font-variant-numeric:tabular-nums}
+  .coords li .n{display:inline-block;min-width:20px;font-size:.75rem;color:var(--muted)}
+  .coords li.cur{border-color:var(--purple);background:#ede9fe;animation:pulse 1.4s infinite}
+  .coords li.ok{background:#dcfce7;color:#166534}
+  .coords li.ok::after{content:" ✓"}
+  .coords li.swap{position:relative}
+  .switch-note{font-size:.8rem;color:var(--muted);margin-top:6px}
+
+  details.card summary{cursor:pointer;font-weight:800;font-size:1.05rem;list-style:none}
+  details.card summary::-webkit-details-marker{display:none}
+  details.card summary::before{content:"▸ ";color:var(--blue)}
+  details[open].card summary::before{content:"▾ "}
+  .instr ol{margin:8px 0 0;padding-left:22px} .instr li{margin:4px 0;font-size:.95rem}
+  .highlight{box-shadow:0 0 0 4px var(--yellow),var(--shadow)!important;animation:glow 1.2s infinite alternate}
+  .disc p{margin:6px 0}
+  .disc .q{background:#fef3c7;border-left:6px solid var(--orange);padding:8px 10px;border-radius:8px;font-weight:700}
+  .signs{width:100%;border-collapse:collapse;margin-top:8px;font-size:.92rem}
+  .signs td,.signs th{border:1px solid #e2e8f0;padding:5px 6px;text-align:center}
+  .signs th{background:#f8fafc}
+  .hidden{display:none!important}
+
+  /* ---------- Modal ---------- */
+  .modal{position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+  .modal.show{display:flex}
+  .modal-box{background:#fff;border-radius:22px;max-width:560px;width:100%;padding:22px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.3);animation:pop .35s ease-out;max-height:92vh;overflow:auto}
+  .modal-box h2{margin:0 0 10px;font-size:clamp(1.3rem,3.2vw,1.9rem);color:var(--green)}
+  .modal-box p{font-size:1.05rem}
+  .reflect{background:#fef3c7;border:3px solid #f59e0b;border-radius:14px;padding:10px 12px;margin:12px 0;font-size:1.05rem}
+  .modal-btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:10px}
+
+  #confetti{position:fixed;inset:0;pointer-events:none;z-index:60}
+
+  /* ---------- Name entry & data collection ---------- */
+  .signin{background:#fff;color:var(--ink);border-radius:18px;padding:16px 18px;width:min(440px,100%);text-align:left;box-shadow:0 10px 30px rgba(0,0,0,.3)}
+  .signin h3{color:var(--purple);text-align:center;margin-bottom:6px}
+  .signin p{color:var(--muted);text-align:center;font-size:.95rem;margin-bottom:10px}
+  .signin label{display:block;font-weight:800;font-size:.85rem;margin:8px 0 3px}
+  .signin input{width:100%;padding:10px 12px;border-radius:12px;border:2px solid #cbd5e1;font-size:1.05rem;font-family:inherit}
+  .signin input:focus{outline:none;border-color:var(--purple)}
+  .signin .req{color:var(--red)}
+  .signin .btn{width:100%;margin-top:12px}
+  .signin .err{color:var(--red);font-weight:700;font-size:.9rem;min-height:1.2em;text-align:center;margin-top:6px}
+  .reflect textarea{width:100%;min-height:70px;margin-top:8px;padding:8px 10px;border-radius:10px;border:2px solid #f59e0b;font-size:1rem;font-family:inherit;resize:vertical}
+  .modal-box.wide{max-width:1000px;text-align:left}
+  .modal-box.wide h2{color:var(--blue)}
+  .tbl-wrap{overflow:auto;max-height:45vh;border:1px solid #e2e8f0;border-radius:10px;margin:8px 0}
+  .results{width:100%;border-collapse:collapse;font-size:.88rem}
+  .results th,.results td{padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:top}
+  .results th{background:#f8fafc;position:sticky;top:0}
+  .results td.refl{max-width:260px}
+  .tag{display:inline-block;padding:2px 8px;border-radius:99px;font-size:.78rem;font-weight:800}
+  .tag.ok{background:#dcfce7;color:#166534} .tag.part{background:#fef3c7;color:#92400e}
+  .sheet-box{background:#f8fafc;border-radius:12px;padding:10px 12px;margin-top:10px;font-size:.9rem}
+  .sheet-box input{width:100%;padding:8px 10px;border-radius:10px;border:2px solid #cbd5e1;font-family:inherit;font-size:.9rem;margin:6px 0}
+  .sheet-box .row{display:flex;gap:8px;flex-wrap:wrap}
+  .saved-note{font-size:.9rem;color:var(--muted);margin-top:4px}
+
+  /* ---------- SVG styles ---------- */
+  .gridline{stroke:#e2e8f0;stroke-width:1}
+  .gridline.five{stroke:#cbd5e1;stroke-width:1.4}
+  .axis{stroke:#0f172a;stroke-width:2.6}
+  .tick{font-size:12px;font-weight:700;fill:#334155;paint-order:stroke;stroke:#fff;stroke-width:3px}
+  .axis-name{font-size:22px;font-weight:800;font-style:italic;fill:#0f172a}
+  .qlabel{font-size:13px;font-weight:800}
+  .qsign{font-size:13px;font-weight:700}
+  .seg{stroke:#7c3aed;stroke-width:4;stroke-linecap:round;fill:none;transition:stroke-dashoffset .6s ease-out}
+  .seg.ghost{stroke:#94a3b8;stroke-dasharray:6 6!important;stroke-dashoffset:0!important}
+  .dot{fill:#16a34a;stroke:#fff;stroke-width:2.5}
+  .dot.missing{fill:#fff;stroke:#94a3b8;stroke-width:2.5}
+  .dotnum{font-size:11px;font-weight:800;fill:#14532d;paint-order:stroke;stroke:#fff;stroke-width:3px}
+  .reveal{animation:fadein 1s ease-out}
+  .flame{transform-box:fill-box;transform-origin:50% 0%;animation:flicker .25s infinite alternate}
+  .twinkle{animation:twinkle 1.2s infinite alternate}
+  .wrongx{stroke:#dc2626;stroke-width:4;stroke-linecap:round;animation:fadeout 1.6s forwards}
+  .poptext{font-size:15px;font-weight:800;paint-order:stroke;stroke:#fff;stroke-width:4px}
+
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+  @keyframes glow{from{box-shadow:0 0 0 3px #fde047,var(--shadow)}to{box-shadow:0 0 0 7px #facc15,var(--shadow)}}
+  @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+  @keyframes pop{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
+  @keyframes fadein{from{opacity:0}to{opacity:1}}
+  @keyframes fadeout{0%{opacity:1}70%{opacity:1}100%{opacity:0}}
+  @keyframes flicker{from{transform:scaleY(.85)}to{transform:scaleY(1.12)}}
+  @keyframes twinkle{from{opacity:.25}to{opacity:1}}
+
+  /* ---------- Responsive ---------- */
+  @media (max-width:1000px){
+    main{grid-template-columns:1fr}
+    .board-wrap{max-width:min(100%, 760px)}
+  }
+  @media (max-width:700px){
+    .timerbar{grid-template-columns:1fr;text-align:center}
+    .timer-btns{justify-content:center}
+    .steps{grid-template-columns:1fr 1fr 1fr}
+    .step b{font-size:.8rem} .step span{font-size:.7rem}
+    .sel-box{flex:1}
+  }
+</style>
+</head>
+<body>
+<canvas id="confetti"></canvas>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>🚀 Mystery Picture – Plot the Points!</h1>
+      <p class="objective"><b>Learning objective:</b> I can plot points accurately on the coordinate plane to reveal a hidden picture.</p>
+    </div>
+    <div class="head-btns">
+      <button class="btn ghost" id="qrBtn" title="Show a QR code students can scan">📱 QR code</button>
+      <button class="btn ghost" id="teacherBtn" title="Teacher: see and download results">📊 Teacher results</button>
+      <button class="btn ghost" id="soundBtn" title="Sound on/off">🔊 Sound</button>
+      <button class="btn ghost" id="fsBtn" title="Full screen">⛶ Full screen</button>
+    </div>
+  </header>
+
+  <!-- Timer -->
+  <section class="timerbar">
+    <div class="clock" id="clock">
+      <div class="phase-name" id="phaseName">5-Minute Challenge</div>
+      <div class="time" id="time">5:00</div>
+      <div class="total" id="total">Total time left: 5:00</div>
+    </div>
+    <div class="steps">
+      <div class="step" id="step-intro"><b>① Get ready</b><span>0:30 · instructions &amp; roles</span><div class="fill"></div></div>
+      <div class="step" id="step-plot"><b>② Plot the points</b><span>3:30 · reveal the picture</span><div class="fill"></div></div>
+      <div class="step" id="step-discuss"><b>③ Discuss</b><span>1:00 · talk about it</span><div class="fill"></div></div>
+    </div>
+    <div class="timer-btns">
+      <button class="btn green" id="startBtn">▶ Start</button>
+      <button class="btn red" id="resetBtn">↺ Reset</button>
+    </div>
+  </section>
+
+  <main>
+    <!-- Board -->
+    <section class="card board-card">
+      <div class="readout">
+        <div class="sel-box">
+          <small>SELECTED POINT (x, y)</small>
+          <div class="pair" id="selPair">( — , — )</div>
+        </div>
+        <div class="feedback info" id="feedback">Press ▶ Start to begin the 5-minute challenge.</div>
+      </div>
+
+      <div class="board-wrap" id="boardWrap">
+        <svg id="board" viewBox="0 0 690 690" role="img" aria-label="Coordinate plane from negative 10 to 10 on both axes">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#0f172a"/>
+            </marker>
+            <linearGradient id="bodyGrad" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0" stop-color="#cbd5e1"/><stop offset=".45" stop-color="#ffffff"/><stop offset="1" stop-color="#94a3b8"/>
+            </linearGradient>
+            <linearGradient id="flameGrad" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0" stop-color="#fde047"/><stop offset=".5" stop-color="#f97316"/><stop offset="1" stop-color="#dc2626"/>
+            </linearGradient>
+          </defs>
+          <g id="quadBg"></g>
+          <g id="gridLayer"></g>
+          <g id="quadLabels"></g>
+          <g id="axesLayer"></g>
+          <g id="fillLayer"></g>
+          <g id="lineLayer"></g>
+          <g id="pointLayer"></g>
+          <g id="originLayer"></g>
+          <g id="markLayer"></g>
+        </svg>
+        <div class="overlay" id="overlay"></div>
+      </div>
+
+      <div class="action-row">
+        <button class="btn green big" id="plotBtn" disabled>✔ We agree – Plot it!</button>
+        <button class="btn ghost big" id="clearBtn" disabled>✖ Clear</button>
+      </div>
+    </section>
+
+    <!-- Side panel -->
+    <aside class="side">
+      <section class="card">
+        <h2>👥 Pair roles</h2>
+        <div class="roles">
+          <div class="role nav"><div class="r-title">🧭 Navigator</div><div class="r-name" id="navName">Partner A</div><div class="r-job">Reads the coordinates &amp; guides</div></div>
+          <div class="role plot"><div class="r-title">👆 Plotter</div><div class="r-name" id="plotName">Partner B</div><div class="r-job">Taps the location on the grid</div></div>
+        </div>
+        <div class="saved-note" id="classNote"></div>
+      </section>
+
+      <section class="card">
+        <div class="target" id="targetBox">
+          <div class="t-label" id="tLabel">Navigator, read Point 1:</div>
+          <div class="t-pair" id="tPair">(<span class="xcol">x</span>, <span class="ycol">y</span>)</div>
+          <div class="t-hint">x first ↔ left/right, then y ↕ up/down</div>
+        </div>
+        <div class="progress-txt"><span id="progTxt">Correct points: 0 / 10</span><span id="mistakes">Tries to fix: 0</span></div>
+        <div class="pbar"><div id="pbar"></div></div>
+      </section>
+
+      <section class="card">
+        <h2>📋 Coordinate list (plot in this order)</h2>
+        <ul class="coords" id="coordList"></ul>
+        <div class="switch-note">🔄 Switch roles after Point 5. The last point joins back to Point 1 automatically.</div>
+      </section>
+
+      <details class="card instr" id="instrCard" open>
+        <summary>📖 Instructions</summary>
+        <ol>
+          <li>Choose roles: <b>Partner A = Navigator 🧭</b>, <b>Partner B = Plotter 👆</b>.</li>
+          <li>The Navigator reads the next ordered pair <b>(x, y)</b> from the list.</li>
+          <li>Start at the origin <b>(0, 0)</b>. Move along the <b>x-axis first</b>: right if x is positive, left if negative.</li>
+          <li>Then move <b>parallel to the y-axis</b>: up if y is positive, down if negative.</li>
+          <li>The Plotter taps that spot. Check the <b>Selected point</b> box.</li>
+          <li>Both partners agree? Press <b>“We agree – Plot it!”</b></li>
+          <li>Switch roles after <b>Point 5</b>.</li>
+          <li>The points join automatically. Plot all 10 to reveal the mystery picture!</li>
+        </ol>
+      </details>
+
+      <details class="card disc" id="discCard">
+        <summary>💬 Discussion (last minute)</summary>
+        <p class="q">How do the signs of the coordinates help you identify the correct quadrant?</p>
+        <p>Talk with your partner:</p>
+        <ul>
+          <li>Which quadrant has points like (2, −4)? Why?</li>
+          <li>Where are points like (0, 9) and (0, −9)? Are they in a quadrant?</li>
+          <li>What happens to a point if you swap x and y, e.g. (2, 6) and (6, 2)?</li>
+        </ul>
+        <button class="btn purple" id="signsBtn">Show the sign rules</button>
+        <table class="signs hidden" id="signsTable">
+          <tr><th>Quadrant</th><th>x</th><th>y</th><th>Example</th></tr>
+          <tr><td>I</td><td>+</td><td>+</td><td>(2, 6)</td></tr>
+          <tr><td>II</td><td>−</td><td>+</td><td>(−2, 6)</td></tr>
+          <tr><td>III</td><td>−</td><td>−</td><td>(−2, −4)</td></tr>
+          <tr><td>IV</td><td>+</td><td>−</td><td>(2, −4)</td></tr>
+          <tr><td colspan="4">If x = 0 the point is on the <b>y-axis</b>; if y = 0 it is on the <b>x-axis</b>.</td></tr>
+        </table>
+      </details>
+    </aside>
+  </main>
+</div>
+
+<!-- Modal -->
+<div class="modal" id="modal" role="dialog" aria-modal="true">
+  <div class="modal-box"><div id="modalBody"></div><div class="modal-btns" id="modalBtns"></div></div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* =========================================================
+   TEACHER SETTING – optional Google Sheet collection
+   Paste your Google Apps Script "Web app" URL between the quotes
+   so every device sends results to your Google Sheet.
+   Leave it empty ("") to only save results on each device.
+   ========================================================= */
+const SHEET_URL = "";
+
+// Public link of this game (used for the QR code). Filled in for the online version.
+const GAME_LINK = "";
+// true only in the online (claude.ai) version, where pages cannot start file downloads
+const IN_ARTIFACT = false;
+
+// Running inside Google Apps Script (the game is hosted from the teacher's Google link)?
+const IN_GAS = typeof google !== "undefined" && google.script && google.script.run ? true : false;
+
+/* Compact QR code encoder (byte mode, error correction M, versions 1–20).
+   Algorithm follows the QR Code standard (ISO/IEC 18004). */
+const QR = (function(){
+  // [eclFormatBits, ECC codewords per block, number of blocks] for level M, index = version
+  const ECC_PER_BLOCK = [-1,10,16,26,18,24,16,18,22,22,26,30,22,22,24,24,28,28,26,26,26];
+  const NUM_BLOCKS    = [-1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9,10,10,11,13,14,16];
+  const ECL_BITS = 0; // M
+  const bit = (x, i) => ((x >>> i) & 1) !== 0;
+
+  function mul(x, y){ let z = 0; for (let i = 7; i >= 0; i--){ z = (z << 1) ^ ((z >>> 7) * 0x11D); z ^= ((y >>> i) & 1) * x; } return z; }
+  function rsDivisor(deg){
+    const r = new Array(deg).fill(0); r[deg - 1] = 1; let root = 1;
+    for (let i = 0; i < deg; i++){
+      for (let j = 0; j < r.length; j++){ r[j] = mul(r[j], root); if (j + 1 < r.length) r[j] ^= r[j + 1]; }
+      root = mul(root, 0x02);
+    }
+    return r;
+  }
+  function rsRemainder(data, div){
+    const r = div.map(() => 0);
+    for (const b of data){ const f = b ^ r.shift(); r.push(0); div.forEach((c, i) => { r[i] ^= mul(c, f); }); }
+    return r;
+  }
+  function rawModules(v){ let r = (16 * v + 128) * v + 64; if (v >= 2){ const n = Math.floor(v / 7) + 2; r -= (25 * n - 10) * n - 55; if (v >= 7) r -= 36; } return r; }
+  function dataCodewords(v){ return Math.floor(rawModules(v) / 8) - ECC_PER_BLOCK[v] * NUM_BLOCKS[v]; }
+  function alignPos(v){
+    if (v === 1) return [];
+    const n = Math.floor(v / 7) + 2, size = v * 4 + 17;
+    const step = Math.ceil((v * 4 + 4) / (n * 2 - 2)) * 2, res = [6];
+    for (let p = size - 7; res.length < n; p -= step) res.splice(1, 0, p);
+    return res;
+  }
+
+  function encode(text){
+    const bytes = Array.from(new TextEncoder().encode(text));
+    let ver = 1;
+    for (; ver <= 20; ver++){
+      const ccBits = ver <= 9 ? 8 : 16;
+      if (4 + ccBits + bytes.length * 8 <= dataCodewords(ver) * 8) break;
+    }
+    if (ver > 20) throw new Error("Text too long for QR code");
+    const ccBits = ver <= 9 ? 8 : 16, cap = dataCodewords(ver) * 8, bb = [];
+    const push = (val, len) => { for (let i = len - 1; i >= 0; i--) bb.push((val >>> i) & 1); };
+    push(4, 4); push(bytes.length, ccBits); bytes.forEach(b => push(b, 8));
+    push(0, Math.min(4, cap - bb.length));
+    push(0, (8 - bb.length % 8) % 8);
+    for (let pad = 0xEC; bb.length < cap; pad ^= 0xEC ^ 0x11) push(pad, 8);
+    const data = []; for (let i = 0; i < bb.length; i += 8){ let b = 0; for (let j = 0; j < 8; j++) b = (b << 1) | bb[i + j]; data.push(b); }
+
+    // error correction + interleaving
+    const nb = NUM_BLOCKS[ver], el = ECC_PER_BLOCK[ver], raw = Math.floor(rawModules(ver) / 8);
+    const nShort = nb - raw % nb, shortLen = Math.floor(raw / nb), div = rsDivisor(el), blocks = [];
+    for (let i = 0, k = 0; i < nb; i++){
+      const dat = data.slice(k, k + shortLen - el + (i < nShort ? 0 : 1)); k += dat.length;
+      const ecc = rsRemainder(dat, div); if (i < nShort) dat.push(0);
+      blocks.push(dat.concat(ecc));
+    }
+    const all = [];
+    for (let i = 0; i < blocks[0].length; i++) blocks.forEach((b, j) => { if (i !== shortLen - el || j >= nShort) all.push(b[i]); });
+
+    // modules
+    const size = ver * 4 + 17;
+    const M = Array.from({length: size}, () => new Array(size).fill(false));
+    const F = Array.from({length: size}, () => new Array(size).fill(false));
+    const setF = (x, y, d) => { M[y][x] = d; F[y][x] = true; };
+    for (let i = 0; i < size; i++){ setF(6, i, i % 2 === 0); setF(i, 6, i % 2 === 0); }
+    [[3, 3], [size - 4, 3], [3, size - 4]].forEach(([cx, cy]) => {
+      for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++){
+        const d = Math.max(Math.abs(dx), Math.abs(dy)), x = cx + dx, y = cy + dy;
+        if (x >= 0 && x < size && y >= 0 && y < size) setF(x, y, d !== 2 && d !== 4);
+      }
+    });
+    const ap = alignPos(ver), na = ap.length;
+    for (let i = 0; i < na; i++) for (let j = 0; j < na; j++){
+      if ((i === 0 && j === 0) || (i === 0 && j === na - 1) || (i === na - 1 && j === 0)) continue;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) setF(ap[i] + dx, ap[j] + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
+    }
+    const drawFormat = mask => {
+      const d = (ECL_BITS << 3) | mask; let r = d;
+      for (let i = 0; i < 10; i++) r = (r << 1) ^ ((r >>> 9) * 0x537);
+      const bits = ((d << 10) | r) ^ 0x5412;
+      for (let i = 0; i <= 5; i++) setF(8, i, bit(bits, i));
+      setF(8, 7, bit(bits, 6)); setF(8, 8, bit(bits, 7)); setF(7, 8, bit(bits, 8));
+      for (let i = 9; i < 15; i++) setF(14 - i, 8, bit(bits, i));
+      for (let i = 0; i < 8; i++) setF(size - 1 - i, 8, bit(bits, i));
+      for (let i = 8; i < 15; i++) setF(8, size - 15 + i, bit(bits, i));
+      setF(8, size - 8, true);
+    };
+    drawFormat(0);
+    if (ver >= 7){
+      let r = ver; for (let i = 0; i < 12; i++) r = (r << 1) ^ ((r >>> 11) * 0x1F25);
+      const bits = (ver << 12) | r;
+      for (let i = 0; i < 18; i++){ const b = bit(bits, i), a = size - 11 + i % 3, c = Math.floor(i / 3); setF(a, c, b); setF(c, a, b); }
+    }
+    let idx = 0;
+    for (let right = size - 1; right >= 1; right -= 2){
+      if (right === 6) right = 5;
+      for (let v = 0; v < size; v++) for (let j = 0; j < 2; j++){
+        const x = right - j, up = ((right + 1) & 2) === 0, y = up ? size - 1 - v : v;
+        if (!F[y][x] && idx < all.length * 8){ M[y][x] = bit(all[idx >>> 3], 7 - (idx & 7)); idx++; }
+      }
+    }
+    const maskFn = [
+      (x, y) => (x + y) % 2 === 0, (x, y) => y % 2 === 0, (x, y) => x % 3 === 0, (x, y) => (x + y) % 3 === 0,
+      (x, y) => (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0, (x, y) => x * y % 2 + x * y % 3 === 0,
+      (x, y) => (x * y % 2 + x * y % 3) % 2 === 0, (x, y) => ((x + y) % 2 + x * y % 3) % 2 === 0
+    ];
+    const applyMask = m => { for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (!F[y][x] && maskFn[m](x, y)) M[y][x] = !M[y][x]; };
+    const penalty = () => {
+      let p = 0, dark = 0;
+      for (let a = 0; a < size; a++){
+        let rr = 1, rc = 1;
+        for (let b = 1; b < size; b++){
+          if (M[a][b] === M[a][b - 1]){ rr++; if (rr === 5) p += 3; else if (rr > 5) p++; } else rr = 1;
+          if (M[b][a] === M[b - 1][a]){ rc++; if (rc === 5) p += 3; else if (rc > 5) p++; } else rc = 1;
+        }
+      }
+      for (let y = 0; y < size - 1; y++) for (let x = 0; x < size - 1; x++){
+        const c = M[y][x]; if (c === M[y][x + 1] && c === M[y + 1][x] && c === M[y + 1][x + 1]) p += 3;
+      }
+      M.forEach(r => r.forEach(c => { if (c) dark++; }));
+      const t = size * size; p += (Math.ceil(Math.abs(dark * 20 - t * 10) / t) - 1) * 10;
+      return p;
+    };
+    let best = 0, bestP = Infinity;
+    for (let m = 0; m < 8; m++){ applyMask(m); drawFormat(m); const p = penalty(); if (p < bestP){ bestP = p; best = m; } applyMask(m); }
+    applyMask(best); drawFormat(best);
+    return M;
+  }
+  function svg(text, margin){
+    const M = encode(text), n = M.length, m = margin == null ? 4 : margin, s = n + m * 2;
+    let d = "";
+    M.forEach((row, y) => row.forEach((c, x) => { if (c) d += "M" + (x + m) + " " + (y + m) + "h1v1h-1z"; }));
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + s + " " + s + '" shape-rendering="crispEdges" role="img" aria-label="QR code">' +
+      '<rect width="' + s + '" height="' + s + '" fill="#fff"/><path d="' + d + '" fill="#000"/></svg>';
+  }
+  return { encode, svg };
+})();
+
+/* =========================================================
+   GAME DATA – the mystery picture (a ROCKET)
+   Integer coordinates, plotted in this order, then the last
+   point is joined back to the first to close the shape.
+   ========================================================= */
+const POINTS = [
+  [ 0,  9],  // 1  nose tip (on the y-axis)
+  [ 2,  6],  // 2  right shoulder (Quadrant I)
+  [ 2, -4],  // 3  right side of body (Quadrant IV)
+  [ 4, -7],  // 4  right fin tip (Quadrant IV)
+  [ 1, -6],  // 5  right engine (Quadrant IV)
+  [ 0, -9],  // 6  flame tip (on the y-axis)
+  [-1, -6],  // 7  left engine (Quadrant III)
+  [-4, -7],  // 8  left fin tip (Quadrant III)
+  [-2, -4],  // 9  left side of body (Quadrant III)
+  [-2,  6]   // 10 left shoulder (Quadrant II)
+];
+const PICTURE_NAME = "ROCKET";
+const SWITCH_AFTER = 5;                       // switch roles after this many points
+const DUR = { intro: 30, plot: 210, discuss: 60 }; // seconds: 0:30 + 3:30 + 1:00 = 5:00
+
+/* ---------- Coordinate plane geometry ---------- */
+const MIN = -10, MAX = 10, CELL = 30, PAD = 45;
+const sx = x => PAD + (x - MIN) * CELL;      // math x -> svg x
+const sy = y => PAD + (MAX - y) * CELL;      // math y -> svg y (y grows upward)
+const NS = "http://www.w3.org/2000/svg";
+
+function el(tag, attrs, parent){
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const $ = id => document.getElementById(id);
+const fmt = n => n < 0 ? "\u2212" + Math.abs(n) : String(n);
+const pairTxt = p => "(" + fmt(p[0]) + ", " + fmt(p[1]) + ")";
+const mmss = s => Math.floor(s / 60) + ":" + String(Math.max(0, s) % 60).padStart(2, "0");
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function locationOf(p){
+  const [x, y] = p;
+  if (x === 0 && y === 0) return "at the origin";
+  if (x === 0) return "on the y-axis";
+  if (y === 0) return "on the x-axis";
+  if (x > 0 && y > 0) return "in Quadrant I";
+  if (x < 0 && y > 0) return "in Quadrant II";
+  if (x < 0 && y < 0) return "in Quadrant III";
+  return "in Quadrant IV";
+}
+
+/* ---------- State ---------- */
+const S = {
+  phase: "ready", left: DUR.intro, timer: null, paused: false, hold: false,
+  current: 0, selected: null, wrongHere: 0, wrongTotal: 0,
+  switched: false, complete: false, plotElapsed: 0, muted: false, revealedByTimeout: false,
+  nameA: "", nameB: "", cls: "", mistakeByPoint: [], saved: false
+};
+
+/* ---------- Results storage (this device) + optional Google Sheet ---------- */
+const STORE_KEY = "mysteryPicture.results.v1", URL_KEY = "mysteryPicture.sheetUrl";
+function loadResults(){ try{ return JSON.parse(localStorage.getItem(STORE_KEY) || "[]"); }catch(e){ return []; } }
+function storeResults(list){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(list)); return true; }catch(e){ return false; } }
+function sheetUrl(){ let u = ""; try{ u = localStorage.getItem(URL_KEY) || ""; }catch(e){} return (u || SHEET_URL || "").trim(); }
+// stop spreadsheet programs treating typed text as a formula
+const safeCell = v => { const s = String(v == null ? "" : v); return /^[=+\-@\t\r]/.test(s) ? "'" + s : s; };
+
+function buildRecord(reflection){
+  const mp = S.mistakeByPoint.map((n, i) => n ? "P" + (i + 1) + "×" + n : "").filter(Boolean).join(", ");
+  return {
+    id: Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+    time: new Date().toLocaleString("en-GB"),
+    cls: S.cls, a: S.nameA, b: S.nameB,
+    result: S.revealedByTimeout ? "Not finished (picture revealed)" : "Completed",
+    points: S.current + " / " + POINTS.length,
+    mistakes: S.wrongTotal,
+    plotTime: mmss(S.plotElapsed),
+    mistakePoints: mp || "none",
+    reflection: (reflection || "").trim(),
+    sent: false
+  };
+}
+function sheetEnabled(){ return IN_GAS || !!sheetUrl(); }
+function sendToSheet(rec){
+  const body = {};
+  for (const k in rec) body[k] = typeof rec[k] === "string" ? safeCell(rec[k]) : rec[k];
+  if (IN_GAS) return new Promise(res => google.script.run.withSuccessHandler(() => res(true)).withFailureHandler(() => res(false)).saveResult(body));
+  const url = sheetUrl();
+  if (!url) return Promise.resolve(false);
+  return fetch(url, { method: "POST", mode: "no-cors", headers: {"Content-Type": "text/plain;charset=utf-8"}, body: JSON.stringify(body) })
+    .then(() => true).catch(() => false);
+}
+function markSent(id){
+  const list = loadResults(), r = list.find(x => x.id === id);
+  if (r){ r.sent = true; storeResults(list); }
+}
+function saveResult(reflection){
+  if (S.saved) return;
+  S.saved = true;
+  const rec = buildRecord(reflection), list = loadResults();
+  list.push(rec);
+  const okLocal = storeResults(list);
+  if (sheetEnabled()){
+    sendToSheet(rec).then(ok => {
+      if (ok) markSent(rec.id);
+      setFeedback(ok ? "💾 Results saved and sent to your teacher. Now discuss with your partner!"
+                     : "💾 Results saved on this device (could not reach the teacher’s sheet – your teacher can resend later).", ok ? "ok" : "info");
+    });
+  } else {
+    setFeedback(okLocal ? "💾 Results saved for your teacher. Now discuss with your partner!" : "⚠️ This browser blocked saving. Tell your teacher.", okLocal ? "ok" : "bad");
+  }
+}
+
+function copyText(text, ok, fail){
+  try{ navigator.clipboard.writeText(text).then(ok, fail); }catch(e){ fail(); }
+}
+function selectEl(id){
+  const el = $(id); if (!el) return;
+  const r = document.createRange(); r.selectNodeContents(el);
+  const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+}
+function resultsTSV(){
+  const head = ["Date & time", "Class", "Partner A", "Partner B", "Result", "Points correct", "Tries to fix", "Plotting time", "Points with mistakes", "Reflection answer"];
+  const c = v => safeCell(v).replace(/[\t\r\n]+/g, " ");
+  return [head.join("\t")].concat(loadResults().map(r => [r.time, r.cls, r.a, r.b, r.result, r.points, r.mistakes, r.plotTime, r.mistakePoints, r.reflection].map(c).join("\t"))).join("\n");
+}
+function csvDownload(){
+  const list = loadResults();
+  const head = ["Date & time", "Class", "Partner A", "Partner B", "Result", "Points correct", "Tries to fix", "Plotting time", "Points with mistakes", "Reflection answer"];
+  const q = v => '"' + safeCell(v).replace(/"/g, '""') + '"';
+  const rows = list.map(r => [r.time, r.cls, r.a, r.b, r.result, r.points, r.mistakes, r.plotTime, r.mistakePoints, r.reflection].map(q).join(","));
+  const csv = "﻿" + head.map(q).join(",") + "\r\n" + rows.join("\r\n");
+  const blob = new Blob([csv], {type: "text/csv;charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "mystery-picture-results-" + new Date().toISOString().slice(0, 10) + ".csv";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+function gameLink(cb){
+  if (GAME_LINK) return cb(GAME_LINK);
+  if (IN_GAS){ google.script.run.withSuccessHandler(u => cb(u || "")).withFailureHandler(() => cb("")).getAppUrl(); return; }
+  if (sheetUrl()) return cb(sheetUrl());
+  if (/^https?:$/.test(location.protocol)) return cb(location.href.split("#")[0]);
+  cb("");
+}
+function qrPng(text){
+  const M = QR.encode(text), n = M.length, m = 4, px = 12, c = document.createElement("canvas");
+  c.width = c.height = (n + m * 2) * px;
+  const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.fillStyle = "#000";
+  M.forEach((row, y) => row.forEach((d, x) => { if (d) g.fillRect((x + m) * px, (y + m) * px, px, px); }));
+  return c.toDataURL("image/png");
+}
+function showQR(link, note){
+  let qr = "";
+  try{ if (link) qr = QR.svg(link); }catch(e){ note = "That link is too long for a QR code."; link = ""; }
+  openModal(
+    "<h2 style='color:#2563eb'>📱 Scan to play: Mystery Picture</h2>" +
+    (link
+      ? "<div style='display:flex;justify-content:center'><div style='width:min(62vh,100%);max-width:520px;border-radius:12px;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.15)'>" + qr + "</div></div>" +
+        "<p id='qrLinkTxt' style='word-break:break-all;font-size:.85rem;color:#64748b;margin:8px 0;user-select:all'>" + esc(link) + "</p>"
+      : "<p><b>This game is opened from a file on this computer, so it doesn’t have a web link for a QR code yet.</b></p>" +
+        "<p style='text-align:left'>Follow <b>google-sheet-setup.txt</b>. Your Google link will open the game for students and save their results to your Sheet. Then paste the link below, or open the game from that link and press <b>📱 QR code</b> again.</p>") +
+    (note ? "<p style='color:#dc2626;font-weight:700'>" + esc(note) + "</p>" : "") +
+    "<div class='sheet-box' style='text-align:left'><b>Make a QR code for a different link:</b><input id='qrLinkIn' placeholder='https://…' value=''><div class='row'><button class='btn purple' id='qrMakeBtn'>Make QR code</button></div></div>",
+    (link ? [
+      {label: "📋 Copy link", cls: "purple", keep: true, action: () => { copyText(link, () => { $("qrLinkTxt").textContent = "✅ Link copied: " + link; }, () => selectEl("qrLinkTxt")); }},
+    ].concat(IN_ARTIFACT ? [] : [{label: "⬇ Download QR image", cls: "green", keep: true, action: () => { const a = document.createElement("a"); a.href = qrPng(link); a.download = "mystery-picture-qr.png"; document.body.appendChild(a); a.click(); a.remove(); }}]).concat([{label: "Close", cls: "ghost"}])
+     : [{label: "Close", cls: "ghost"}]), {wide: !!link});
+  $("qrMakeBtn").onclick = () => {
+    const v = $("qrLinkIn").value.trim();
+    if (!/^https?:\/\/\S+$/.test(v)){ showQR(link, "Please paste a full web link starting with https://"); return; }
+    showQR(v);
+  };
+}
+function openQR(){ gameLink(link => showQR(link)); }
+
+function openTeacherPanel(note, confirmClear){
+  const list = loadResults().slice().reverse();
+  const unsent = list.filter(r => !r.sent).length;
+  const rows = list.length ? list.map(r =>
+    "<tr><td>" + esc(r.time) + "</td><td>" + esc(r.cls || "–") + "</td><td><b>" + esc(r.a) + "</b><br><b>" + esc(r.b) + "</b></td><td>" +
+    '<span class="tag ' + (r.result === "Completed" ? "ok" : "part") + '">' + esc(r.result === "Completed" ? "Completed" : "Not finished") + "</span></td><td>" +
+    esc(r.points) + "</td><td>" + esc(r.mistakes) + "</td><td>" + esc(r.plotTime) + "</td><td>" + esc(r.mistakePoints) + '</td><td class="refl">' +
+    esc(r.reflection || "–") + "</td><td>" + (r.sent ? "✅" : (sheetEnabled() ? "⏳" : "–")) + "</td></tr>").join("")
+    : '<tr><td colspan="10" style="text-align:center;padding:18px">No results yet on this device.</td></tr>';
+  const url = sheetUrl();
+  openModal(
+    "<h2>📊 Teacher results</h2>" +
+    "<p>Results saved on <b>this device</b>: <b>" + list.length + "</b> pair(s)." + (note ? " <b style='color:#16a34a'>" + esc(note) + "</b>" : "") + "</p>" +
+    (confirmClear ? "<p style='background:#fee2e2;color:#7f1d1d;padding:8px 10px;border-radius:10px;font-weight:700'>Delete ALL results saved on this device? Copy or download them first if you need them. Press the red button again to confirm.</p>" : "") +
+    '<div class="tbl-wrap"><table class="results"><tr><th>Date &amp; time</th><th>Class</th><th>Pair</th><th>Result</th><th>Points</th><th>Tries to fix</th><th>Time</th><th>Mistakes on</th><th>Reflection</th><th>Sheet</th></tr>' + rows + "</table></div>" +
+    '<div class="sheet-box"><b>☁️ Google Sheet (optional)</b> – collect results from every device in one sheet.' +
+    '<input id="sheetUrlIn" placeholder="Paste your Apps Script web-app URL (https://script.google.com/macros/s/…/exec)" value="' + esc(url) + '">' +
+    '<div class="row"><button class="btn purple" id="saveUrlBtn">Save URL on this device</button>' +
+    (sheetEnabled() && unsent ? '<button class="btn orange" id="resendBtn">Resend ' + unsent + ' unsent</button>' : "") + "</div></div>",
+    [
+      {label: "📋 Copy table (paste into Excel)", cls: "purple", keep: true, action: () => copyText(resultsTSV(), () => openTeacherPanel("Table copied – paste it into Excel or Google Sheets."), () => openTeacherPanel("Copy was blocked by this browser. Select the table and copy it by hand."))},
+      ].concat(IN_ARTIFACT ? [] : [{label: "⬇ Download for Excel (CSV)", cls: "green", keep: true, action: csvDownload}]).concat([
+      {label: confirmClear ? "⚠️ Yes, delete all results" : "🗑 Clear all results", cls: "red", keep: true, action: () => {
+        if (confirmClear){ storeResults([]); openTeacherPanel("All results cleared."); } else openTeacherPanel("", true);
+      }},
+      {label: "Close", cls: "ghost"}
+    ]), {wide: true});
+  $("saveUrlBtn").onclick = () => {
+    const v = $("sheetUrlIn").value.trim();
+    if (v && !/^https:\/\/script\.google(usercontent)?\.com\//.test(v)){ openTeacherPanel("That doesn’t look like a Google Apps Script web-app URL. It should start with https://script.google.com/"); return; }
+    try{ localStorage.setItem(URL_KEY, v); }catch(e){}
+    openTeacherPanel(v ? "Sheet URL saved." : "Sheet URL removed.");
+  };
+  if ($("resendBtn")) $("resendBtn").onclick = () => {
+    const pending = loadResults().filter(r => !r.sent);
+    Promise.all(pending.map(r => sendToSheet(r).then(ok => { if (ok) markSent(r.id); return ok; })))
+      .then(res => openTeacherPanel(res.filter(Boolean).length + " result(s) sent."));
+  };
+}
+
+/* ---------- Build the coordinate plane ---------- */
+const board = $("board");
+function buildBoard(){
+  const qb = $("quadBg"), gl = $("gridLayer"), ql = $("quadLabels"), ax = $("axesLayer"), ol = $("originLayer");
+  // quadrant tints
+  const tints = [ [0, 10, 0, 10, "#ecfdf5"], [-10, 0, 0, 10, "#eff6ff"], [-10, 0, -10, 0, "#f5f3ff"], [0, 10, -10, 0, "#fffbeb"] ];
+  tints.forEach(([x1, x2, y1, y2, c]) => el("rect", {x: sx(x1), y: sy(y2), width: (x2 - x1) * CELL, height: (y2 - y1) * CELL, fill: c}, qb));
+  // grid lines
+  for (let i = MIN; i <= MAX; i++){
+    const cls = "gridline" + (i % 5 === 0 ? " five" : "");
+    el("line", {x1: sx(i), y1: sy(MAX), x2: sx(i), y2: sy(MIN), class: cls}, gl);
+    el("line", {x1: sx(MIN), y1: sy(i), x2: sx(MAX), y2: sy(i), class: cls}, gl);
+  }
+  // quadrant labels with sign patterns
+  const qs = [ ["Quadrant I", "(+, +)", 7, 8.7, "#047857"], ["Quadrant II", "(\u2212, +)", -7, 8.7, "#1d4ed8"],
+               ["Quadrant III", "(\u2212, \u2212)", -7, -8.7, "#6d28d9"], ["Quadrant IV", "(+, \u2212)", 7, -8.7, "#b45309"] ];
+  qs.forEach(([name, sign, x, y, col]) => {
+    const g = el("g", {}, ql);
+    el("rect", {x: sx(x) - 58, y: sy(y) - 22, width: 116, height: 44, rx: 10, fill: "#fff", "fill-opacity": .85, stroke: col, "stroke-width": 1.5}, g);
+    const t1 = el("text", {x: sx(x), y: sy(y) - 3, "text-anchor": "middle", class: "qlabel", fill: col}, g); t1.textContent = name;
+    const t2 = el("text", {x: sx(x), y: sy(y) + 14, "text-anchor": "middle", class: "qsign", fill: col}, g); t2.textContent = sign;
+  });
+  // axes with arrows
+  el("line", {x1: sx(MIN - .6), y1: sy(0), x2: sx(MAX + .6), y2: sy(0), class: "axis", "marker-start": "url(#arrow)", "marker-end": "url(#arrow)"}, ax);
+  el("line", {x1: sx(0), y1: sy(MIN - .6), x2: sx(0), y2: sy(MAX + .6), class: "axis", "marker-start": "url(#arrow)", "marker-end": "url(#arrow)"}, ax);
+  const xl = el("text", {x: sx(MAX + .6) + 10, y: sy(0) + 7, class: "axis-name"}, ax); xl.textContent = "x";
+  const yl = el("text", {x: sx(0), y: sy(MAX + .6) - 8, "text-anchor": "middle", class: "axis-name"}, ax); yl.textContent = "y";
+  // tick marks + numbers
+  for (let i = MIN; i <= MAX; i++){
+    if (i === 0) continue;
+    el("line", {x1: sx(i), y1: sy(0) - 5, x2: sx(i), y2: sy(0) + 5, stroke: "#0f172a", "stroke-width": 2}, ax);
+    el("line", {x1: sx(0) - 5, y1: sy(i), x2: sx(0) + 5, y2: sy(i), stroke: "#0f172a", "stroke-width": 2}, ax);
+    const tx = el("text", {x: sx(i), y: sy(0) + 20, "text-anchor": "middle", class: "tick"}, ax); tx.textContent = fmt(i);
+    const ty = el("text", {x: sx(0) - 9, y: sy(i) + 4, "text-anchor": "end", class: "tick"}, ax); ty.textContent = fmt(i);
+  }
+  // origin
+  el("circle", {cx: sx(0), cy: sy(0), r: 5, fill: "#0f172a"}, ol);
+  const o = el("text", {x: sx(0) + 7, y: sy(0) - 8, class: "tick"}, ol); o.textContent = "(0, 0)";
+}
+
+/* ---------- Coordinate list ---------- */
+function buildList(){
+  const ul = $("coordList"); ul.innerHTML = "";
+  POINTS.forEach((p, i) => {
+    const li = document.createElement("li");
+    li.innerHTML = '<span class="n">' + (i + 1) + '.</span> ' + pairTxt(p);
+    ul.appendChild(li);
+  });
+}
+
+/* ---------- Sound (Web Audio, no files needed) ---------- */
+let actx = null;
+function tone(freq, dur, type, delay){
+  if (S.muted) return;
+  try{
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const t = actx.currentTime + (delay || 0);
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type || "sine"; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.18, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + dur + 0.05);
+  }catch(e){}
+}
+const sndSelect = () => tone(660, .08, "triangle");
+const sndRight  = () => { tone(660, .12, "sine"); tone(990, .18, "sine", .1); };
+const sndWrong  = () => { tone(220, .22, "sawtooth"); };
+const sndWin    = () => [523, 659, 784, 1047, 784, 1047].forEach((f, i) => tone(f, .22, "triangle", i * .13));
+const sndBell   = () => { tone(880, .3, "sine"); tone(880, .3, "sine", .35); };
+
+/* ---------- Timer ---------- */
+function startTimer(){
+  if (S.timer) clearInterval(S.timer);
+  S.timer = setInterval(tick, 1000);
+}
+function tick(){
+  if (S.paused || S.hold || S.phase === "ready" || S.phase === "done") return;
+  S.left--;
+  if (S.phase === "plot") S.plotElapsed++;
+  if (S.left <= 0){ S.left = 0; render(); phaseEnded(); return; }
+  if (S.left <= 5 && S.phase !== "discuss") tone(1000, .05, "square");
+  render();
+}
+function phaseEnded(){
+  if (S.phase === "intro") startPlotting();
+  else if (S.phase === "plot"){
+    S.hold = true; sndBell();
+    openModal('<h2 style="color:#dc2626">⏰ Time’s up for plotting!</h2><p>You plotted <b>' + S.current + ' of ' + POINTS.length +
+      '</b> points correctly. Do you need a little more time, or shall we reveal the picture?</p>', [
+      {label: "➕ 30 more seconds", cls: "orange", action: () => { S.left = 30; S.hold = false; setFeedback("30 more seconds – keep going!", "info"); render(); }},
+      {label: "👀 Reveal picture & discuss", cls: "purple", action: () => { S.hold = false; revealByTimeout(); }}
+    ]);
+  } else if (S.phase === "discuss"){
+    S.phase = "done"; sndBell();
+    setFeedback("🎉 The 5-minute challenge is finished. Great teamwork!", "ok");
+    render();
+  }
+}
+function startActivity(){
+  S.phase = "intro"; S.left = DUR.intro; S.paused = false;
+  setFeedback("Step 1: Read the instructions and choose your roles.", "info");
+  startTimer(); render();
+}
+function startPlotting(){
+  S.phase = "plot"; S.left = DUR.plot;
+  $("instrCard").open = true;
+  setFeedback("Go! Navigator, read Point 1 to your partner.", "info");
+  tone(784, .15, "triangle"); render();
+}
+function startDiscussion(){
+  S.phase = "discuss"; S.left = DUR.discuss;
+  $("discCard").open = true;
+  render();
+}
+
+/* ---------- Selecting & plotting ---------- */
+function canPlot(){
+  return S.phase === "plot" && !S.complete && !S.hold && !S.paused && !$("modal").classList.contains("show");
+}
+function toMath(evt){
+  const pt = board.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY;
+  const m = board.getScreenCTM(); if (!m) return null;
+  const p = pt.matrixTransform(m.inverse());
+  return { x: (p.x - PAD) / CELL + MIN, y: MAX - (p.y - PAD) / CELL };
+}
+const clampI = v => Math.max(MIN, Math.min(MAX, v));
+
+function selectPoint(p){
+  S.selected = p;
+  drawSelection();
+  $("selPair").textContent = pairTxt(p);
+  sndSelect(); render();
+}
+function clearSelection(){
+  S.selected = null; $("markLayer").querySelectorAll(".sel").forEach(n => n.remove());
+  $("selPair").textContent = "( — , — )"; render();
+}
+function drawSelection(){
+  const ml = $("markLayer");
+  ml.querySelectorAll(".sel").forEach(n => n.remove());
+  if (!S.selected) return;
+  const [x, y] = S.selected, g = el("g", {class: "sel"}, ml);
+  // guide lines show how far to move along x, then y
+  if (x !== 0) el("line", {x1: sx(0), y1: sy(0), x2: sx(x), y2: sy(0), stroke: "#dc2626", "stroke-width": 5, "stroke-opacity": .55, "stroke-linecap": "round"}, g);
+  if (y !== 0) el("line", {x1: sx(x), y1: sy(0), x2: sx(x), y2: sy(y), stroke: "#2563eb", "stroke-width": 5, "stroke-opacity": .55, "stroke-linecap": "round"}, g);
+  el("circle", {cx: sx(x), cy: sy(y), r: 13, fill: "#facc15", "fill-opacity": .45, stroke: "#ca8a04", "stroke-width": 3}, g);
+  el("circle", {cx: sx(x), cy: sy(y), r: 4, fill: "#854d0e"}, g);
+  const right = x <= 6, above = y <= 8;
+  const t = el("text", {x: sx(x) + (right ? 16 : -16), y: sy(y) + (above ? -14 : 26), "text-anchor": right ? "start" : "end", class: "poptext", fill: "#854d0e"}, g);
+  t.textContent = pairTxt(S.selected);
+}
+
+function hintFor(sel, tgt){
+  const [x, y] = sel, [tx, ty] = tgt;
+  if (x === ty && y === tx && tx !== ty) return "You swapped x and y! Remember: x comes first (left/right), then y (up/down).";
+  if (Math.sign(x) !== Math.sign(tx)){
+    if (tx > 0) return "Check the x-coordinate: it is positive, so move RIGHT from the origin.";
+    if (tx < 0) return "Check the x-coordinate: it is negative, so move LEFT from the origin.";
+    return "Check the x-coordinate: it is 0, so don’t move left or right – the point is on the y-axis.";
+  }
+  if (Math.sign(y) !== Math.sign(ty)){
+    if (ty > 0) return "Check the y-coordinate: it is positive, so move UP.";
+    if (ty < 0) return "Check the y-coordinate: it is negative, so move DOWN.";
+    return "Check the y-coordinate: it is 0, so the point is on the x-axis.";
+  }
+  if (x === tx) return "Your x is correct! Count the units for y again.";
+  if (y === ty) return "Your y is correct! Count the units for x again.";
+  return "Right direction! Now count the units for both x and y again carefully.";
+}
+
+function confirmPlot(){
+  if (!S.selected || !canPlot()) return;
+  const tgt = POINTS[S.current], sel = S.selected;
+  if (sel[0] === tgt[0] && sel[1] === tgt[1]){
+    plotCorrect(S.current, false);
+    S.current++; S.wrongHere = 0;
+    clearSelection(); sndRight();
+    setFeedback("✅ Correct! " + pairTxt(tgt) + " is " + locationOf(tgt) + ".", "ok");
+    if (S.current === POINTS.length){ finish(); return; }
+    if (S.current === SWITCH_AFTER && !S.switched) roleSwitch();
+  } else {
+    S.wrongHere++; S.wrongTotal++;
+    S.mistakeByPoint[S.current] = (S.mistakeByPoint[S.current] || 0) + 1;
+    drawWrong(sel); sndWrong();
+    const wrap = $("boardWrap"); wrap.classList.remove("shake"); void wrap.offsetWidth; wrap.classList.add("shake");
+    let msg = "❌ Not quite. " + hintFor(sel, tgt);
+    if (S.wrongHere >= 3) msg += " Big hint: the point is " + locationOf(tgt) + ".";
+    setFeedback(msg, "bad");
+    clearSelection();
+  }
+  render();
+}
+
+function plotCorrect(i, ghost){
+  const p = POINTS[i];
+  if (i > 0) drawSegment(POINTS[i - 1], p, ghost);
+  const g = el("g", {}, $("pointLayer"));
+  el("circle", {cx: sx(p[0]), cy: sy(p[1]), r: 8, class: "dot" + (ghost ? " missing" : "")}, g);
+  const lx = p[0] >= 0 ? 12 : -12;
+  const t = el("text", {x: sx(p[0]) + lx, y: sy(p[1]) - 10, "text-anchor": p[0] >= 0 ? "start" : "end", class: "dotnum"}, g);
+  t.textContent = i + 1;
+}
+function drawSegment(a, b, ghost){
+  const x1 = sx(a[0]), y1 = sy(a[1]), x2 = sx(b[0]), y2 = sy(b[1]);
+  const len = Math.hypot(x2 - x1, y2 - y1);
+  const line = el("line", {x1, y1, x2, y2, class: "seg" + (ghost ? " ghost" : "")}, $("lineLayer"));
+  if (!ghost){
+    line.style.strokeDasharray = len; line.style.strokeDashoffset = len;
+    requestAnimationFrame(() => requestAnimationFrame(() => { line.style.strokeDashoffset = 0; }));
+  }
+}
+function drawWrong(p){
+  const g = el("g", {class: "wrongx"}, $("markLayer")), x = sx(p[0]), y = sy(p[1]), d = 9;
+  el("line", {x1: x - d, y1: y - d, x2: x + d, y2: y + d}, g);
+  el("line", {x1: x - d, y1: y + d, x2: x + d, y2: y - d}, g);
+  setTimeout(() => g.remove(), 1700);
+}
+
+/* ---------- Role switch ---------- */
+function names(){ return { A: (S.nameA || "Partner A"), B: (S.nameB || "Partner B") }; }
+function roleSwitch(){
+  const n = names();
+  tone(523, .15, "triangle"); tone(784, .2, "triangle", .15);
+  openModal('<h2 style="color:#7c3aed">🔄 Halfway there – switch roles!</h2><p>Great job on the first ' + SWITCH_AFTER + ' points!</p>' +
+    '<p>🧭 <b>' + esc(n.B) + '</b> is now the <b>Navigator</b>.<br>👆 <b>' + esc(n.A) + '</b> is now the <b>Plotter</b>.</p>' +
+    '<p>Swap seats or pass the device, then continue with Point ' + (SWITCH_AFTER + 1) + '.</p>', [
+    {label: "✔ We switched – continue!", cls: "purple", action: () => {
+      S.switched = true;
+      setFeedback("Roles switched! Navigator, read Point " + (SWITCH_AFTER + 1) + ".", "info"); render();
+    }}
+  ]);
+}
+
+/* ---------- Finish & reveal ---------- */
+function drawPicture(faded){
+  const P = pts => pts.map(p => sx(p[0]) + "," + sy(p[1])).join(" ");
+  const g = el("g", {class: "reveal", opacity: faded ? .55 : 1}, $("fillLayer"));
+  el("polygon", {points: P(POINTS), fill: "url(#bodyGrad)"}, g);
+  el("polygon", {points: P([[0, 9], [2, 6], [-2, 6]]), fill: "#ef4444"}, g);           // nose cone
+  el("polygon", {points: P([[2, -4], [4, -7], [1, -6]]), fill: "#ef4444"}, g);         // right fin
+  el("polygon", {points: P([[-2, -4], [-4, -7], [-1, -6]]), fill: "#ef4444"}, g);      // left fin
+  el("polygon", {points: P([[1, -6], [0, -9], [-1, -6]]), fill: "url(#flameGrad)", class: "flame"}, g); // flame
+  el("circle", {cx: sx(0), cy: sy(2), r: CELL * 1.1, fill: "#38bdf8", stroke: "#ffffff", "stroke-width": 5}, g); // window
+  el("circle", {cx: sx(-.35), cy: sy(2.35), r: CELL * .3, fill: "#e0f2fe"}, g);
+  [[-6, 4], [6, 3], [-7, -2], [7, -3], [5, 7], [-5, 7]].forEach(([x, y], i) => {
+    const s = el("text", {x: sx(x), y: sy(y), "text-anchor": "middle", "font-size": 26, fill: "#f59e0b", class: "twinkle"}, g);
+    s.style.animationDelay = (i * .2) + "s"; s.textContent = "★";
+  });
+}
+function finish(){
+  S.complete = true;
+  // close the shape: last point back to Point 1
+  drawSegment(POINTS[POINTS.length - 1], POINTS[0], false);
+  setFeedback("🚀 All points plotted! The mystery picture is revealed!", "ok");
+  render();
+  setTimeout(() => {
+    drawPicture(false); sndWin(); confetti();
+    startDiscussion();
+    const n = names(), used = S.plotElapsed;
+    openModal('<h2>🚀 Mission Accomplished! You plotted the points correctly!</h2>' +
+      '<p>The mystery picture is a <b>' + PICTURE_NAME + '</b>! Well done, <b>' + esc(n.A) + '</b> and <b>' + esc(n.B) + '</b>!</p>' +
+      '<p>⏱ Plotting time: <b>' + mmss(used) + '</b> &nbsp;·&nbsp; 🔁 Tries to fix: <b>' + S.wrongTotal + '</b></p>' +
+      reflectBox(),
+      [{label: "💾 Save & discuss", cls: "green", action: () => saveResult(readReflection())}]);
+  }, 700);
+}
+function revealByTimeout(){
+  S.complete = true; S.revealedByTimeout = true;
+  clearSelection();
+  for (let i = S.current; i < POINTS.length; i++) plotCorrect(i, true);
+  if (S.current === 0) {/* first point drawn as ghost above */}
+  drawSegment(POINTS[POINTS.length - 1], POINTS[0], true);
+  drawPicture(true);
+  setFeedback("The grey dashed points show the rest of the picture – a " + PICTURE_NAME + "! Check them with your partner.", "info");
+  startDiscussion();
+  openModal('<h2 style="color:#7c3aed">👀 The mystery picture is a ' + PICTURE_NAME + '!</h2>' +
+    '<p>The grey dashed points are the ones you still had to plot. Check one of them together.</p>' + reflectBox(),
+    [{label: "💾 Save & discuss", cls: "green", action: () => saveResult(readReflection())}]);
+}
+function reflectBox(){
+  return '<div class="reflect"><b>💭 Quick reflection – talk with your partner:</b><br>How do the signs of the coordinates help you identify the correct quadrant?' +
+    '<textarea id="reflectIn" maxlength="400" placeholder="Type your answer together (optional)…"></textarea></div>' +
+    '<p style="font-size:.95rem;color:#64748b">Press <b>Save</b> so your teacher gets your result. Then you have 1 minute to discuss.</p>';
+}
+function readReflection(){ const t = $("reflectIn"); return t ? t.value : ""; }
+
+/* ---------- Confetti ---------- */
+const cv = $("confetti"), cx = cv.getContext("2d");
+let parts = [], raf = null;
+function confetti(){
+  cv.width = innerWidth; cv.height = innerHeight;
+  const cols = ["#ef4444", "#f97316", "#facc15", "#22c55e", "#3b82f6", "#a855f7", "#ec4899"];
+  for (let i = 0; i < 180; i++) parts.push({
+    x: Math.random() * cv.width, y: -20 - Math.random() * cv.height * .6,
+    vx: (Math.random() - .5) * 4, vy: 2 + Math.random() * 4, s: 7 + Math.random() * 8,
+    r: Math.random() * 6, vr: (Math.random() - .5) * .3, c: cols[i % cols.length]
+  });
+  if (!raf) loop();
+}
+function loop(){
+  cx.clearRect(0, 0, cv.width, cv.height);
+  parts.forEach(p => {
+    p.x += p.vx; p.y += p.vy; p.vy += .04; p.r += p.vr;
+    cx.save(); cx.translate(p.x, p.y); cx.rotate(p.r); cx.fillStyle = p.c;
+    cx.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); cx.restore();
+  });
+  parts = parts.filter(p => p.y < cv.height + 30);
+  raf = parts.length ? requestAnimationFrame(loop) : (cx.clearRect(0, 0, cv.width, cv.height), null);
+}
+
+/* ---------- Modal ---------- */
+function openModal(html, buttons, opts){
+  $("modalBody").innerHTML = html;
+  document.querySelector(".modal-box").classList.toggle("wide", !!(opts && opts.wide));
+  const box = $("modalBtns"); box.innerHTML = "";
+  buttons.forEach(b => {
+    const btn = document.createElement("button");
+    btn.className = "btn big " + (b.cls || ""); btn.textContent = b.label;
+    btn.onclick = () => { if (!b.keep) closeModal(); if (b.action) b.action(); };
+    box.appendChild(btn);
+  });
+  $("modal").classList.add("show");
+  render();
+}
+function closeModal(){ $("modal").classList.remove("show"); render(); }
+
+/* ---------- Feedback ---------- */
+function setFeedback(msg, kind){ const f = $("feedback"); f.textContent = msg; f.className = "feedback " + (kind || ""); }
+
+/* ---------- Render UI ---------- */
+function render(){
+  // timer
+  const later = S.phase === "intro" ? DUR.plot + DUR.discuss : S.phase === "plot" ? DUR.discuss : 0;
+  const shown = S.phase === "ready" ? DUR.intro + DUR.plot + DUR.discuss : S.phase === "done" ? 0 : S.left;
+  const totalLeft = S.phase === "ready" ? shown : S.phase === "done" ? 0 : S.left + later;
+  $("time").textContent = mmss(shown);
+  $("total").textContent = "Total time left: " + mmss(totalLeft);
+  const names_ = {ready: "5-Minute Challenge", intro: "① Get ready", plot: "② Plot the points", discuss: "③ Discuss", done: "Finished!"};
+  $("phaseName").textContent = names_[S.phase] + (S.paused ? " (paused)" : "");
+  $("clock").classList.toggle("warn", (S.phase === "intro" || S.phase === "plot" || S.phase === "discuss") && S.left <= 10 && !S.paused);
+
+  const order = ["intro", "plot", "discuss"], idx = order.indexOf(S.phase);
+  order.forEach((ph, i) => {
+    const st = $("step-" + ph), fill = st.querySelector(".fill");
+    st.classList.toggle("active", ph === S.phase);
+    st.classList.toggle("donestep", S.phase === "done" || (idx > i));
+    if (ph === S.phase) fill.style.width = Math.min(100, (1 - S.left / DUR[ph]) * 100) + "%";
+    else if (!(S.phase === "done" || idx > i)) fill.style.width = "0";
+    else fill.style.width = "";
+  });
+
+  // start / pause button
+  const sb = $("startBtn");
+  if (S.phase === "ready"){ sb.textContent = "▶ Start"; sb.disabled = false; sb.className = "btn green"; }
+  else if (S.phase === "done"){ sb.textContent = "✔ Done"; sb.disabled = true; sb.className = "btn"; }
+  else if (S.paused){ sb.textContent = "▶ Resume"; sb.disabled = false; sb.className = "btn green"; }
+  else { sb.textContent = "⏸ Pause"; sb.disabled = false; sb.className = "btn orange"; }
+
+  // overlay on board
+  const ov = $("overlay");
+  if (S.phase === "ready"){
+    if (ov.dataset.mode !== "ready"){   // build the form once so typing is never interrupted
+      ov.dataset.mode = "ready";
+      ov.className = "overlay";
+      ov.innerHTML = '<form class="signin" id="signin" autocomplete="off">' +
+        '<h3>🔍 What is the mystery picture?</h3><p>Work in pairs. Plot 10 points to find out! You have <b>5 minutes</b>.</p>' +
+        '<label for="inA">🧭 Partner A full name <span class="req">*</span></label><input id="inA" maxlength="40" required placeholder="First and last name">' +
+        '<label for="inB">👆 Partner B full name <span class="req">*</span></label><input id="inB" maxlength="40" required placeholder="First and last name">' +
+        '<label for="inC">🏫 Class / section</label><input id="inC" maxlength="20" placeholder="e.g. 6B">' +
+        '<div class="err" id="signErr"></div>' +
+        '<button type="submit" class="btn green big">▶ Start the challenge</button></form>';
+      $("inA").value = S.nameA; $("inB").value = S.nameB; $("inC").value = S.cls;
+      $("signin").onsubmit = e => {
+        e.preventDefault();
+        const a = $("inA").value.trim().replace(/\s+/g, " "), b = $("inB").value.trim().replace(/\s+/g, " "), c = $("inC").value.trim();
+        if (a.length < 2 || b.length < 2){ $("signErr").textContent = "Both partners must type their names to start."; (a.length < 2 ? $("inA") : $("inB")).focus(); return; }
+        if (a.toLowerCase() === b.toLowerCase()){ $("signErr").textContent = "Please type two different names."; $("inB").focus(); return; }
+        S.nameA = a; S.nameB = b; S.cls = c;
+        try{ localStorage.setItem("mysteryPicture.lastClass", c); }catch(err){}
+        startActivity();
+      };
+    }
+  } else if (S.phase === "intro"){
+    ov.className = "overlay"; ov.dataset.mode = "";
+    ov.innerHTML = '<h3>① Read the instructions &amp; choose roles</h3><p>Who is the 🧭 Navigator? Who is the 👆 Plotter? Read the instructions panel together.</p>' +
+      '<div class="big-count">' + mmss(S.left) + '</div><button class="btn purple big" id="ovGo">We’re ready – start plotting!</button>';
+    $("ovGo").onclick = startPlotting;
+  } else if (S.paused){
+    ov.className = "overlay"; ov.dataset.mode = "";
+    ov.innerHTML = '<h3>⏸ Paused</h3><button class="btn green big" id="ovResume">▶ Resume</button>';
+    $("ovResume").onclick = togglePause;
+  } else { ov.className = "overlay hidden"; ov.innerHTML = ""; ov.dataset.mode = ""; }
+  $("classNote").textContent = S.cls ? "🏫 Class: " + S.cls : "";
+
+  // roles
+  const n = names();
+  $("navName").textContent = S.switched ? n.B : n.A;
+  $("plotName").textContent = S.switched ? n.A : n.B;
+
+  // target
+  const tb = $("targetBox");
+  if (S.current < POINTS.length && !S.complete){
+    const p = POINTS[S.current];
+    $("tLabel").textContent = "🧭 Navigator, read Point " + (S.current + 1) + " of " + POINTS.length + ":";
+    $("tPair").innerHTML = '(<span class="xcol">' + fmt(p[0]) + '</span>, <span class="ycol">' + fmt(p[1]) + '</span>)';
+  } else {
+    $("tLabel").textContent = S.revealedByTimeout ? "Picture revealed:" : "All points plotted!";
+    $("tPair").innerHTML = "🚀 " + PICTURE_NAME;
+  }
+  tb.style.opacity = (S.phase === "plot" || S.complete) ? 1 : .55;
+
+  // progress
+  $("progTxt").textContent = "Correct points: " + S.current + " / " + POINTS.length;
+  $("mistakes").textContent = "Tries to fix: " + S.wrongTotal;
+  $("pbar").style.width = (S.current / POINTS.length * 100) + "%";
+
+  // list
+  [...$("coordList").children].forEach((li, i) => {
+    li.classList.toggle("ok", i < S.current);
+    li.classList.toggle("cur", i === S.current && !S.complete && S.phase === "plot");
+  });
+
+  // buttons
+  $("plotBtn").disabled = !(S.selected && canPlot());
+  $("clearBtn").disabled = !S.selected;
+
+  // panels
+  $("instrCard").classList.toggle("highlight", S.phase === "intro");
+  $("discCard").classList.toggle("highlight", S.phase === "discuss");
+}
+
+/* ---------- Controls ---------- */
+function togglePause(){
+  if (S.phase === "ready"){ startActivity(); return; }
+  if (S.phase === "done") return;
+  S.paused = !S.paused;
+  render();
+}
+function resetGame(){
+  if (S.timer) clearInterval(S.timer);
+  S.timer = null;
+  Object.assign(S, {phase: "ready", left: DUR.intro, paused: false, hold: false, current: 0, selected: null,
+    wrongHere: 0, wrongTotal: 0, switched: false, complete: false, plotElapsed: 0, revealedByTimeout: false,
+    nameA: "", nameB: "", cls: "", mistakeByPoint: [], saved: false});
+  try{ S.cls = localStorage.getItem("mysteryPicture.lastClass") || ""; }catch(e){}
+  ["fillLayer", "lineLayer", "pointLayer", "markLayer"].forEach(id => $(id).innerHTML = "");
+  parts = []; cx.clearRect(0, 0, cv.width, cv.height);
+  $("modal").classList.remove("show");
+  $("selPair").textContent = "( — , — )";
+  $("signsTable").classList.add("hidden"); $("signsBtn").textContent = "Show the sign rules";
+  $("discCard").open = false; $("instrCard").open = true;
+  setFeedback("Press ▶ Start to begin the 5-minute challenge.", "info");
+  render();
+}
+
+board.addEventListener("click", e => {
+  if (!canPlot()){
+    if (S.phase === "discuss" || S.phase === "done") return;
+    return;
+  }
+  const m = toMath(e); if (!m) return;
+  if (m.x < MIN - .5 || m.x > MAX + .5 || m.y < MIN - .5 || m.y > MAX + .5) return;
+  const x = clampI(Math.round(m.x)) || 0, y = clampI(Math.round(m.y)) || 0; // "|| 0" turns -0 into 0
+  selectPoint([x, y]);
+});
+
+// mouse hover preview (desktop / whiteboard pens)
+let hoverG = null;
+board.addEventListener("pointermove", e => {
+  if (e.pointerType === "touch" || !canPlot()){ if (hoverG){ hoverG.remove(); hoverG = null; } return; }
+  const m = toMath(e); if (!m) return;
+  if (m.x < MIN - .5 || m.x > MAX + .5 || m.y < MIN - .5 || m.y > MAX + .5){ if (hoverG){ hoverG.remove(); hoverG = null; } return; }
+  const x = clampI(Math.round(m.x)) || 0, y = clampI(Math.round(m.y)) || 0;
+  if (!hoverG) hoverG = el("g", {"pointer-events": "none"}, $("markLayer"));
+  hoverG.innerHTML = "";
+  el("circle", {cx: sx(x), cy: sy(y), r: 9, fill: "#7c3aed", "fill-opacity": .25, stroke: "#7c3aed", "stroke-width": 2}, hoverG);
+  const t = el("text", {x: sx(x) + (x <= 6 ? 14 : -14), y: sy(y) + (y >= 9 ? 26 : -12), "text-anchor": x <= 6 ? "start" : "end", class: "poptext", fill: "#6d28d9", "font-size": 13}, hoverG);
+  t.textContent = pairTxt([x, y]);
+});
+board.addEventListener("pointerleave", () => { if (hoverG){ hoverG.remove(); hoverG = null; } });
+
+// keyboard support: arrows move the selection, Enter plots, Esc clears
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+  if (!canPlot()) return;
+  const d = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1]}[e.key];
+  if (d){ e.preventDefault(); const c = S.selected || [0, 0]; selectPoint([clampI(c[0] + d[0]), clampI(c[1] + d[1])]); }
+  else if (e.key === "Enter"){ e.preventDefault(); confirmPlot(); }
+  else if (e.key === "Escape"){ clearSelection(); }
+});
+
+$("plotBtn").onclick = confirmPlot;
+$("clearBtn").onclick = clearSelection;
+$("startBtn").onclick = togglePause;
+$("resetBtn").onclick = () => {
+  if (S.phase === "ready"){ resetGame(); return; }
+  const wasPaused = S.paused; S.paused = true; render();
+  openModal("<h2 style='color:#dc2626'>↺ Reset the game?</h2><p>This clears the points and restarts the 5-minute timer for a new pair. Results already saved are kept.</p>",
+    [{label: "↺ Yes, reset", cls: "red", action: resetGame}, {label: "Cancel", cls: "ghost", action: () => { S.paused = wasPaused; render(); }}]);
+};
+$("signsBtn").onclick = () => {
+  const t = $("signsTable"); t.classList.toggle("hidden");
+  $("signsBtn").textContent = t.classList.contains("hidden") ? "Show the sign rules" : "Hide the sign rules";
+};
+$("soundBtn").onclick = () => { S.muted = !S.muted; $("soundBtn").textContent = S.muted ? "🔇 Sound" : "🔊 Sound"; };
+$("fsBtn").onclick = () => {
+  const d = document, de = d.documentElement;
+  try{
+    if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+    else (de.requestFullscreen || de.webkitRequestFullscreen).call(de);
+  }catch(err){}
+};
+$("teacherBtn").onclick = () => openTeacherPanel();
+$("qrBtn").onclick = openQR;
+window.addEventListener("resize", () => { if (parts.length){ cv.width = innerWidth; cv.height = innerHeight; } });
+
+/* ---------- Built-in accuracy self-check (see browser console) ---------- */
+function selfCheck(){
+  const quads = new Set(), errors = [];
+  POINTS.forEach((p, i) => {
+    if (!Number.isInteger(p[0]) || !Number.isInteger(p[1])) errors.push("Point " + (i + 1) + " is not an integer pair");
+    if (p[0] < MIN || p[0] > MAX || p[1] < MIN || p[1] > MAX) errors.push("Point " + (i + 1) + " is off the grid");
+    const backX = (sx(p[0]) - PAD) / CELL + MIN, backY = MAX - (sy(p[1]) - PAD) / CELL;
+    if (backX !== p[0] || backY !== p[1]) errors.push("Point " + (i + 1) + " maps incorrectly");
+    if (p[0] !== 0 && p[1] !== 0) quads.add(locationOf(p));
+  });
+  if (quads.size !== 4) errors.push("Picture does not use all four quadrants");
+  if (sx(0) !== PAD + 10 * CELL || sy(0) !== PAD + 10 * CELL) errors.push("Origin is not at the centre");
+  console.log(errors.length ? "Self-check FAILED: " + errors.join("; ") : "Self-check passed: " + POINTS.length + " integer points, all four quadrants used, mapping exact.");
+  return errors;
+}
+window.__mysteryGame = { POINTS, S, sx, sy, selfCheck };
+
+try{ S.cls = localStorage.getItem("mysteryPicture.lastClass") || ""; }catch(e){}
+buildBoard(); buildList(); render(); selfCheck();
+})();
+</script>
+</body>
+</html>
