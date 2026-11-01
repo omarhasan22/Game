@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+  html, body { height: 100%; }
+  body { display: flex; flex-direction: column; }
+  .start { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+  .start .card { width: 100%; max-width: 420px; margin: 0; }
+  .start h1 { margin-bottom: 4px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 6px 12px; background: var(--surface); border-bottom: 1px solid var(--border); font-size: .9rem;
+  }
+  .bar .who { font-weight: 600; }
+  .bar .spacer { flex: 1; }
+  .save { font-size: .85rem; }
+  .save.ok { color: var(--ok); } .save.bad { color: var(--bad); }
+  .game { flex: 1; display: flex; min-height: 0; }
+  .game iframe { flex: 1; width: 100%; border: 0; background: #fff; }
+</style>
+</head>
+<body>
+<section class="start" id="start">
+  <form class="card" id="form" novalidate>
+    <h1>__TITLE__</h1>
+    <p class="muted">Enter your details before you start.</p>
+    <div class="field">
+      <label for="full_name">Full name</label>
+      <input type="text" id="full_name" autocomplete="name" maxlength="80" required>
+    </div>
+    <div class="two">
+      <div class="field">
+        <label for="grade">Grade</label>
+        <input type="text" id="grade" maxlength="20" placeholder="e.g. 7" required>
+      </div>
+      <div class="field">
+        <label for="section">Section</label>
+        <input type="text" id="section" maxlength="20" placeholder="e.g. B" required>
+      </div>
+    </div>
+    <div class="error-text" id="formError" role="alert"></div>
+    <button class="btn primary" style="width:100%" id="startBtn">Start game</button>
+  </form>
+</section>
+
+<header class="bar hidden" id="bar">
+  <span class="who" id="who"></span>
+  <span class="badge attempt" id="attempt"></span>
+  <span class="save muted" id="save" role="status"></span>
+  <span class="spacer"></span>
+  <button class="btn sm" id="againBtn" type="button">Restart</button>
+  <button class="btn sm" id="changeBtn" type="button">Not you?</button>
+</header>
+<main class="game hidden" id="game"></main>
+
+<script src="/assets/common.js"></script>
+<script>
+const GAME = __GAME_JSON__;
+const STUDENT_KEY = 'gamehub.student';
+let student = null;          // { full_name, grade, section }
+let attempt = null;          // { id, token, attempt_no }
+let frame = null;
+let pending = [];            // results waiting to be saved
+let saving = false;
+let gameHtml = null;         // the game page, fetched once
+
+const saved = storageGet(STUDENT_KEY);
+if (saved) for (const k of ['full_name', 'grade', 'section']) $('#' + k).value = saved[k] || '';
+
+$('#form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const s = {};
+  for (const k of ['full_name', 'grade', 'section']) s[k] = $('#' + k).value.replace(/\s+/g, ' ').trim();
+  if (!s.full_name || !s.grade || !s.section) { $('#formError').textContent = 'Please fill in your full name, grade and section.'; return; }
+  if (s.full_name.split(' ').length < 2) { $('#formError').textContent = 'Please write your full name (first and last name).'; return; }
+  $('#formError').textContent = '';
+  $('#startBtn').disabled = true;
+  $('#startBtn').textContent = 'Starting…';
+  student = s;
+  storageSet(STUDENT_KEY, s);
+  try {
+    await startAttempt();
+    $('#start').classList.add('hidden');
+    $('#bar').classList.remove('hidden');
+    $('#game').classList.remove('hidden');
+    $('#who').textContent = `${s.full_name} · Grade ${s.grade} · Section ${s.section}`;
+  } catch (err) {
+    $('#formError').textContent = err.status === 404 ? 'This game is not available any more. Ask your teacher.' : 'Could not start. Check your internet and try again.';
+  } finally {
+    $('#startBtn').disabled = false;
+    $('#startBtn').textContent = 'Start game';
+  }
+});
+
+async function startAttempt() {
+  if (!gameHtml) {
+    const res = await fetch('/play/' + encodeURIComponent(GAME.slug));
+    if (!res.ok) throw Object.assign(new Error('Game not available'), { status: res.status });
+    gameHtml = await res.text();
+  }
+  attempt = await api('/api/attempts', { method: 'POST', body: { slug: GAME.slug, ...student } });
+  showAttempt();
+  setSave('', '');
+  setAgain(false);
+  loadFrame();
+}
+
+function showAttempt() {
+  $('#attempt').textContent = `${ordinal(attempt.attempt_no)} attempt`;
+}
+
+function loadFrame() {
+  if (frame) frame.remove();
+  frame = document.createElement('iframe');
+  frame.setAttribute('sandbox', GAME.sandbox);
+  frame.setAttribute('allow', 'fullscreen; autoplay; clipboard-write');
+  frame.title = GAME.title;
+  // The game is written straight into the sandboxed frame, so it never shares this site's origin.
+  frame.srcdoc = gameHtml;
+  $('#game').append(frame);
+}
+
+// Before a result is saved the button restarts the game; after, it invites another try.
+function setAgain(done) {
+  $('#againBtn').textContent = done ? 'Play again' : 'Restart';
+  $('#againBtn').classList.toggle('primary', done);
+  $('#againBtn').dataset.done = done ? '1' : '';
+}
+
+function setSave(text, cls) {
+  const el = $('#save');
+  el.textContent = text;
+  el.className = 'save ' + (cls || 'muted');
+}
+
+window.addEventListener('message', e => {
+  if (!frame || e.source !== frame.contentWindow || !e.data) return;
+  if (e.data.type === 'gamehub-ready') {
+    frame.contentWindow.postMessage({ type: 'gamehub-player', player: { ...student, attempt_no: attempt.attempt_no } }, '*');
+  } else if (e.data.type === 'gamehub-result') {
+    pending.push(e.data.result || {});
+    flush();
+  }
+});
+
+async function flush(tries = 0) {
+  if (saving || !pending.length) return;
+  saving = true;
+  setSave('Saving your result…');
+  try {
+    attempt = await api('/api/attempts/' + attempt.id, { method: 'PUT', body: { token: attempt.token, result: pending[0] } });
+    pending.shift();
+    showAttempt();
+    setSave(`✓ Result saved (${ordinal(attempt.attempt_no)} attempt)`, 'ok');
+    setAgain(true);
+    saving = false;
+    flush();
+  } catch (err) {
+    saving = false;
+    setSave('Could not save your result yet — retrying…', 'bad');
+    setTimeout(() => flush(tries + 1), Math.min(30000, 2000 * 2 ** tries));
+  }
+}
+
+$('#againBtn').addEventListener('click', async () => {
+  if (pending.length && !confirm('Your last result is not saved yet. Start again anyway?')) return;
+  if (!pending.length && !$('#againBtn').dataset.done && !confirm('Restart the game from the beginning?')) return;
+  $('#againBtn').disabled = true;
+  try { await startAttempt(); }
+  catch { toast('Could not start a new attempt. Check your internet.'); }
+  finally { $('#againBtn').disabled = false; }
+});
+
+$('#changeBtn').addEventListener('click', () => {
+  if (pending.length && !confirm('Your last result is not saved yet. Leave anyway?')) return;
+  if (frame) frame.remove();
+  frame = null; attempt = null; pending = [];
+  $('#bar').classList.add('hidden');
+  $('#game').classList.add('hidden');
+  $('#start').classList.remove('hidden');
+  $('#full_name').focus();
+});
+
+window.addEventListener('beforeunload', e => { if (pending.length) e.preventDefault(); });
+</script>
+</body>
+</html>
