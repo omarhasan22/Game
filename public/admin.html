@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Games · Game Hub</title>
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+  .upload-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+  @media (max-width: 760px) { .upload-grid { grid-template-columns: 1fr; } }
+  .success { border: 1px solid var(--ok); background: var(--ok-soft); border-radius: var(--radius); padding: 16px; margin-top: 16px; }
+  .games { display: grid; gap: 12px; }
+  .game {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; align-items: center;
+    padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+  }
+  .game.off { opacity: .65; }
+  .game h3 { margin: 0; font-size: 1.05rem; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .game .stats { font-size: .85rem; color: var(--muted); }
+  .game .actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .game .link-box { grid-column: 1 / -1; }
+  @media (max-width: 640px) { .game { grid-template-columns: 1fr; } .game .actions { justify-content: flex-start; } }
+  .switch { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; font-size: .85rem; margin: 0; cursor: pointer; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/admin">🎮 Game Hub</a>
+  <nav class="nav"><a href="/admin" class="active">Games</a><a href="/admin/results">Results</a></nav>
+  <button class="btn sm hidden" id="logoutBtn">Log out</button>
+</header>
+<script src="/assets/common.js"></script>
+<script src="/assets/auth.js"></script>
+
+<main class="page hidden" id="main">
+  <section class="card">
+    <h2>Add a game</h2>
+    <form id="uploadForm" class="upload-grid" novalidate>
+      <div>
+        <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose a game file">
+          <div class="big">📄</div>
+          <div id="dropText"><strong>Drag &amp; drop your game's .html file here</strong><br><span class="muted small">or click to choose a file</span></div>
+        </div>
+        <input type="file" id="file" accept=".html,.htm,text/html" class="hidden">
+      </div>
+      <div>
+        <div class="field">
+          <label for="title">Game title</label>
+          <input type="text" id="title" maxlength="120" placeholder="e.g. Fractions Puzzle">
+        </div>
+        <div class="field">
+          <label for="slug">Link name</label>
+          <div class="prefix-input"><span id="origin"></span><input type="text" id="slug" maxlength="40" placeholder="puzzle" autocapitalize="off" spellcheck="false"></div>
+          <div class="hint" id="slugHint">Lowercase letters, numbers and dashes. This is the link students open.</div>
+        </div>
+        <div class="error-text" id="uploadError" role="alert"></div>
+        <button class="btn primary" id="uploadBtn">Upload &amp; get link</button>
+      </div>
+    </form>
+    <div class="success hidden" id="success">
+      <strong>✓ <span id="successTitle"></span> is ready.</strong> Send this link to your students:
+      <div class="link-box" style="margin-top:8px">
+        <code id="successLink"></code>
+        <button class="btn sm" id="successCopy" type="button">Copy</button>
+        <button class="btn sm" id="successQr" type="button">QR code</button>
+        <a class="btn sm" id="successOpen" target="_blank" rel="noopener">Open</a>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px">
+      <h2 style="margin:0">Your games</h2>
+      <span class="muted small" id="gameCount"></span>
+    </div>
+    <div class="games" id="games"></div>
+    <p class="muted hidden" id="noGames">No games yet. Add your first game above.</p>
+  </section>
+</main>
+
+<input type="file" id="replaceFile" accept=".html,.htm,text/html" class="hidden">
+
+<div class="modal-bg hidden" id="qrModal" role="dialog" aria-modal="true" aria-labelledby="qrTitle">
+  <div class="modal">
+    <h2 id="qrTitle"></h2>
+    <p class="muted small">Students can scan this to open the game.</p>
+    <div class="qr" id="qrBox"></div>
+    <div class="small" id="qrLink" style="word-break:break-all"></div>
+    <div style="margin-top:16px"><button class="btn" id="qrClose" type="button">Close</button></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+const ORIGIN = location.origin;
+const linkFor = slug => `${ORIGIN}/${slug}`;
+const RESERVED = ['admin', 'api', 'play', 'sdk.js', 'assets', 'static', 'health', 'login', 'logout', 'favicon.ico', 'robots.txt'];
+let chosenFile = null, slugEdited = false, games = [], replaceTarget = null;
+
+$('#origin').textContent = ORIGIN.replace(/^https?:\/\//, '') + '/';
+const SLUG_HINT = $('#slugHint').textContent;
+function showSlugHint() {
+  const slug = $('#slug').value.trim();
+  $('#slugHint').textContent = slug && !slugProblem(slug) ? 'Students will open: ' + linkFor(slug) : SLUG_HINT;
+}
+
+function slugify(s) {
+  return s.toLowerCase().replace(/\.html?$/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '');
+}
+function slugProblem(slug) {
+  if (!slug) return 'Please type a link name.';
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/.test(slug)) return 'Use only lowercase letters, numbers and dashes (not at the start or end).';
+  if (RESERVED.includes(slug)) return `"${slug}" is reserved. Choose another name.`;
+  if (games.some(g => g.slug === slug)) return `"${slug}" is already used by another game.`;
+  return '';
+}
+
+/* ----- choose a file ----- */
+const drop = $('#drop');
+drop.addEventListener('click', () => $('#file').click());
+drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#file').click(); } });
+$('#file').addEventListener('change', () => { if ($('#file').files[0]) chooseFile($('#file').files[0]); });
+['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) chooseFile(f); });
+// Dropping a file anywhere else on the page should not open it in the browser.
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => e.preventDefault());
+
+async function chooseFile(file) {
+  $('#uploadError').textContent = '';
+  if (!/\.html?$/i.test(file.name)) { $('#uploadError').textContent = 'Please choose an .html file.'; return; }
+  if (file.size > 5 * 1024 * 1024) { $('#uploadError').textContent = 'The file is too big (5 MB max).'; return; }
+  chosenFile = file;
+  drop.classList.add('has-file');
+  $('#dropText').innerHTML = `<strong>${esc(file.name)}</strong><br><span class="muted small">${Math.round(file.size / 1024)} KB · click to choose a different file</span>`;
+  const text = await file.text();
+  const m = text.match(/<title[^>]*>([^<]*)<\/title>/i);
+  if (!$('#title').value.trim()) $('#title').value = (m ? m[1] : file.name.replace(/\.html?$/i, '')).trim();
+  if (!slugEdited) $('#slug').value = slugify(file.name);
+  showSlugHint();
+  $('#success').classList.add('hidden');
+}
+
+$('#slug').addEventListener('input', () => {
+  slugEdited = true;
+  const v = $('#slug').value, clean = v.toLowerCase().replace(/\s+/g, '-');
+  if (v !== clean) $('#slug').value = clean;
+  $('#uploadError').textContent = $('#slug').value ? slugProblem($('#slug').value) : '';
+  showSlugHint();
+});
+
+/* ----- upload ----- */
+$('#uploadForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const slug = $('#slug').value.trim(), title = $('#title').value.trim();
+  const problem = !chosenFile ? 'Please choose a game file first.' : !title ? 'Please type a game title.' : slugProblem(slug);
+  if (problem) { $('#uploadError').textContent = problem; return; }
+  const form = new FormData();
+  form.append('file', chosenFile);
+  form.append('title', title);
+  form.append('slug', slug);
+  $('#uploadBtn').disabled = true;
+  $('#uploadBtn').textContent = 'Uploading…';
+  try {
+    const g = await api('/api/games', { method: 'POST', form });
+    showSuccess(g);
+    resetUpload();
+    loadGames();
+  } catch (err) {
+    if (!handleAuthError(err)) $('#uploadError').textContent = err.message;
+  } finally {
+    $('#uploadBtn').disabled = false;
+    $('#uploadBtn').textContent = 'Upload & get link';
+  }
+});
+
+function resetUpload() {
+  chosenFile = null; slugEdited = false;
+  $('#uploadForm').reset();
+  $('#file').value = '';
+  drop.classList.remove('has-file');
+  $('#dropText').innerHTML = `<strong>Drag &amp; drop your game's .html file here</strong><br><span class="muted small">or click to choose a file</span>`;
+  showSlugHint();
+}
+
+function showSuccess(g) {
+  const url = linkFor(g.slug);
+  $('#successTitle').textContent = g.title;
+  $('#successLink').textContent = url;
+  $('#successOpen').href = url;
+  $('#successCopy').onclick = () => copyText(url);
+  $('#successQr').onclick = () => showQr(g.title, url);
+  $('#success').classList.remove('hidden');
+}
+
+/* ----- game list ----- */
+async function loadGames() {
+  try { games = await api('/api/games'); }
+  catch (err) { handleAuthError(err); return; }
+  $('#noGames').classList.toggle('hidden', games.length > 0);
+  $('#gameCount').textContent = games.length ? `${games.length} game${games.length > 1 ? 's' : ''}` : '';
+  $('#games').innerHTML = games.map(g => `
+    <article class="game ${g.active ? '' : 'off'}" data-id="${g.id}">
+      <div>
+        <h3>${esc(g.title)} ${g.active ? '' : '<span class="badge idle">Off — students cannot open it</span>'}</h3>
+        <div class="stats">${g.attempts} attempt${g.attempts === 1 ? '' : 's'} · ${g.students} student${g.students === 1 ? '' : 's'} · ${Math.round(g.size / 1024)} KB · added ${fmtDate(g.created_at)}</div>
+      </div>
+      <div class="actions">
+        <label class="switch"><input type="checkbox" data-act="toggle" ${g.active ? 'checked' : ''}> On</label>
+        <a class="btn sm" href="/admin/results?game=${encodeURIComponent(g.slug)}">Results</a>
+        <button class="btn sm" data-act="rename" type="button">Rename</button>
+        <button class="btn sm" data-act="replace" type="button">Replace file</button>
+        <button class="btn sm danger" data-act="delete" type="button">Delete</button>
+      </div>
+      <div class="link-box">
+        <code>${esc(linkFor(g.slug))}</code>
+        <button class="btn sm" data-act="copy" type="button">Copy</button>
+        <button class="btn sm" data-act="qr" type="button">QR code</button>
+        <a class="btn sm" href="/${encodeURIComponent(g.slug)}" target="_blank" rel="noopener">Open</a>
+      </div>
+    </article>`).join('');
+}
+
+$('#games').addEventListener('click', e => {
+  const btn = e.target.closest('[data-act]');
+  if (!btn || btn.dataset.act === 'toggle') return;
+  const g = games.find(x => x.id === Number(btn.closest('.game').dataset.id));
+  const act = btn.dataset.act;
+  if (act === 'copy') copyText(linkFor(g.slug));
+  if (act === 'qr') showQr(g.title, linkFor(g.slug));
+  if (act === 'rename') renameGame(g);
+  if (act === 'replace') { replaceTarget = g; $('#replaceFile').value = ''; $('#replaceFile').click(); }
+  if (act === 'delete') deleteGame(g);
+});
+
+$('#games').addEventListener('change', async e => {
+  if (e.target.dataset.act !== 'toggle') return;
+  const g = games.find(x => x.id === Number(e.target.closest('.game').dataset.id));
+  await updateGame(g, { active: e.target.checked }, e.target.checked ? 'Game turned on' : 'Game turned off — the link no longer works');
+});
+
+async function updateGame(g, fields, message) {
+  const form = new FormData();
+  for (const [k, v] of Object.entries(fields)) form.append(k, v);
+  try { await api('/api/games/' + g.id, { method: 'PUT', form }); toast(message); }
+  catch (err) { handleAuthError(err); }
+  loadGames();
+}
+
+function renameGame(g) {
+  const title = prompt('New title for this game:', g.title);
+  if (title && title.trim() && title.trim() !== g.title) updateGame(g, { title: title.trim() }, 'Title updated');
+}
+
+$('#replaceFile').addEventListener('change', () => {
+  const file = $('#replaceFile').files[0];
+  if (!file || !replaceTarget) return;
+  if (!/\.html?$/i.test(file.name)) { toast('Please choose an .html file.'); return; }
+  if (!confirm(`Replace the file for "${replaceTarget.title}" with ${file.name}?\nThe link and saved results stay the same.`)) return;
+  updateGame(replaceTarget, { file }, 'Game file replaced');
+});
+
+async function deleteGame(g) {
+  const warn = g.attempts ? `\n\nThis also deletes its ${g.attempts} saved result${g.attempts === 1 ? '' : 's'}. To keep the results, turn the game off instead.` : '';
+  if (!confirm(`Delete "${g.title}"?${warn}`)) return;
+  try { await api('/api/games/' + g.id, { method: 'DELETE' }); toast('Game deleted'); }
+  catch (err) { handleAuthError(err); }
+  loadGames();
+}
+
+/* ----- QR code ----- */
+function showQr(title, url) {
+  $('#qrTitle').textContent = title;
+  $('#qrLink').textContent = url;
+  $('#qrBox').innerHTML = '';
+  if (window.QRCode) new QRCode($('#qrBox'), { text: url, width: 280, height: 280, correctLevel: QRCode.CorrectLevel.M });
+  else $('#qrBox').textContent = 'QR code could not load.';
+  $('#qrModal').classList.remove('hidden');
+  $('#qrClose').focus();
+}
+$('#qrClose').addEventListener('click', () => $('#qrModal').classList.add('hidden'));
+$('#qrModal').addEventListener('click', e => { if (e.target.id === 'qrModal') $('#qrModal').classList.add('hidden'); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#qrModal').classList.add('hidden'); });
+
+requireLogin(loadGames);
+</script>
+</body>
+</html>

@@ -611,6 +611,12 @@ function saveResult(reflection){
   if (S.saved) return;
   S.saved = true;
   const rec = buildRecord(reflection), list = loadResults();
+  // Game Hub: send the result to the teacher's dashboard.
+  if (window.GameHub) GameHub.submit({
+    status: S.revealedByTimeout ? "not_finished" : "completed",
+    score: S.current, max_score: POINTS.length, duration_s: S.plotElapsed,
+    details: { partnerA: rec.a, partnerB: rec.b, class: rec.cls, triesToFix: rec.mistakes, pointsWithMistakes: rec.mistakePoints, reflection: rec.reflection }
+  });
   list.push(rec);
   const okLocal = storeResults(list);
   if (sheetEnabled()){

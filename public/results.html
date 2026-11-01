@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Results · Game Hub</title>
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+  .top-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+  .top-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; background: var(--surface); }
+  .top-card h3 { font-size: 1rem; margin-bottom: 10px; }
+  .place { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; padding: 8px 0; }
+  .place + .place { border-top: 1px solid var(--border); }
+  .medal { font-size: 1.6rem; grid-row: span 2; text-align: center; }
+  .place .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .place .score { font-weight: 700; font-size: 1.05rem; text-align: right; font-variant-numeric: tabular-nums; }
+  .place .meta, .place .sub { font-size: .82rem; color: var(--muted); }
+  .place .sub { text-align: right; }
+  .filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; align-items: end; }
+  .filters label { font-size: .8rem; }
+  .student-banner { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; background: var(--accent-soft); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; }
+  .name-link { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; text-align: left; }
+  .name-link:hover { text-decoration: underline; }
+  .details { font-size: .8rem; color: var(--muted); max-width: 260px; }
+  .details summary { cursor: pointer; }
+  .details pre { white-space: pre-wrap; word-break: break-word; margin: 6px 0 0; font-size: .78rem; }
+  .icon-btn { background: none; border: 0; cursor: pointer; color: var(--muted); padding: 4px 6px; border-radius: 6px; font-size: 1rem; }
+  .icon-btn:hover { color: var(--bad); background: var(--bad-soft); }
+  .summary { display: flex; gap: 18px; flex-wrap: wrap; font-size: .9rem; color: var(--muted); margin: 4px 0 12px; }
+  .summary b { color: var(--text); }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/admin">🎮 Game Hub</a>
+  <nav class="nav"><a href="/admin">Games</a><a href="/admin/results" class="active">Results</a></nav>
+  <button class="btn sm hidden" id="logoutBtn">Log out</button>
+</header>
+<script src="/assets/common.js"></script>
+<script src="/assets/auth.js"></script>
+
+<main class="page hidden" id="main">
+  <section class="card">
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 style="margin:0">🏆 Top 2 in each game</h2>
+      <span class="muted small">Highest score · ties go to the faster time</span>
+    </div>
+    <div class="top-grid" id="top"></div>
+  </section>
+
+  <section class="card">
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 style="margin:0">All attempts</h2>
+      <div class="row" style="gap:8px">
+        <span class="muted small" id="updated"></span>
+        <button class="btn sm" id="refreshBtn" type="button">Refresh</button>
+        <a class="btn sm primary" id="csvBtn" href="/api/results.csv">Export CSV</a>
+      </div>
+    </div>
+    <div class="filters">
+      <div><label for="fGame">Game</label><select id="fGame"><option value="">All games</option></select></div>
+      <div><label for="fGrade">Grade</label><select id="fGrade"><option value="">All</option></select></div>
+      <div><label for="fSection">Section</label><select id="fSection"><option value="">All</option></select></div>
+      <div><label for="fStatus">Status</label>
+        <select id="fStatus"><option value="">All</option><option value="completed">Completed</option><option value="not_finished">Not finished</option><option value="started">Started only</option></select></div>
+      <div><label for="fFrom">From</label><input type="date" id="fFrom"></div>
+      <div><label for="fTo">To</label><input type="date" id="fTo"></div>
+      <div><label for="fQ">Name</label><input type="search" id="fQ" placeholder="Search…"></div>
+      <div><button class="btn" id="clearBtn" type="button" style="width:100%">Clear filters</button></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="student-banner hidden" id="studentBanner">
+      <span>Showing every attempt by <b id="studentName"></b></span>
+      <button class="btn sm" id="studentClear" type="button">Show everyone</button>
+    </div>
+    <div class="summary" id="summary"></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th class="sortable" data-sort="created_at">Date</th>
+          <th class="sortable" data-sort="game_title">Game</th>
+          <th class="sortable" data-sort="full_name">Name</th>
+          <th class="sortable" data-sort="grade">Grade</th>
+          <th class="sortable" data-sort="section">Section</th>
+          <th class="sortable" data-sort="attempt_no">Attempt</th>
+          <th class="sortable" data-sort="status">Status</th>
+          <th class="sortable" data-sort="score">Score</th>
+          <th class="sortable" data-sort="duration_s">Time</th>
+          <th>Details</th>
+          <th></th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <p class="muted hidden" id="empty" style="text-align:center;padding:20px 0">No results match these filters.</p>
+  </section>
+</main>
+
+<script>
+let all = [], studentFilter = null, sort = { key: 'created_at', dir: -1 };
+const params = new URLSearchParams(location.search);
+const STATUS = { completed: ['Completed', 'ok'], not_finished: ['Not finished', 'warn'], started: ['Started only', 'idle'] };
+
+async function load() {
+  let top;
+  try { [all, top] = await Promise.all([api('/api/results'), api('/api/top')]); }
+  catch (err) { handleAuthError(err); return; }
+  fillOptions();
+  renderTop(top);
+  render();
+  $('#updated').textContent = 'Updated ' + new Date().toLocaleTimeString(undefined, { timeStyle: 'short' });
+}
+
+function fillOptions() {
+  const fill = (sel, values, label) => {
+    const cur = sel.value;
+    sel.innerHTML = `<option value="">${label}</option>` + values.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join('');
+    sel.value = values.some(([v]) => v === cur) ? cur : '';
+  };
+  const games = new Map();
+  for (const r of all) games.set(r.slug, r.game_title);
+  // Students may type "b" or "B": list each grade/section once.
+  const uniq = key => {
+    const m = new Map();
+    for (const r of all) if (!m.has(r[key].toLowerCase())) m.set(r[key].toLowerCase(), r[key]);
+    return [...m].sort((a, b) => a[1].localeCompare(b[1], undefined, { numeric: true }));
+  };
+  fill($('#fGame'), [...games].sort((a, b) => a[1].localeCompare(b[1])), 'All games');
+  fill($('#fGrade'), uniq('grade'), 'All');
+  fill($('#fSection'), uniq('section'), 'All');
+  if (params.get('game') && !$('#fGame').value) { $('#fGame').value = params.get('game'); params.delete('game'); }
+}
+
+function renderTop(top) {
+  const byGame = new Map();
+  for (const r of top) { if (!byGame.has(r.slug)) byGame.set(r.slug, { title: r.game_title, rows: [] }); byGame.get(r.slug).rows.push(r); }
+  // Also list played games that have no scored result yet.
+  for (const r of all) if (!byGame.has(r.slug)) byGame.set(r.slug, { title: r.game_title, rows: [] });
+  if (!byGame.size) { $('#top').innerHTML = '<p class="muted">No results yet. Share a game link with your students to get started.</p>'; return; }
+  const medals = ['🥇', '🥈'];
+  $('#top').innerHTML = [...byGame.values()].map(g => `
+    <div class="top-card">
+      <h3>${esc(g.title)}</h3>
+      ${g.rows.length ? g.rows.map(r => `
+        <div class="place">
+          <div class="medal">${medals[r.place - 1]}</div>
+          <div class="name" title="${esc(r.full_name)}">${esc(r.full_name)}</div>
+          <div class="score">${fmtScore(r.score, r.max_score)}</div>
+          <div class="meta">Grade ${esc(r.grade)} · Section ${esc(r.section)}</div>
+          <div class="sub">${fmtDuration(r.duration_s)} · ${ordinal(r.attempt_no)} attempt</div>
+        </div>`).join('') : '<p class="muted small" style="margin:0">No scores yet.</p>'}
+    </div>`).join('');
+}
+
+function filtered() {
+  const f = {
+    game: $('#fGame').value, grade: $('#fGrade').value, section: $('#fSection').value, status: $('#fStatus').value,
+    from: $('#fFrom').value ? new Date($('#fFrom').value + 'T00:00') : null,
+    to: $('#fTo').value ? new Date($('#fTo').value + 'T00:00') : null,
+    q: $('#fQ').value.trim().toLowerCase(),
+  };
+  if (f.to) f.to.setDate(f.to.getDate() + 1);
+  return all.filter(r =>
+    (!f.game || r.slug === f.game) && (!f.grade || r.grade.toLowerCase() === f.grade) && (!f.section || r.section.toLowerCase() === f.section) &&
+    (!f.status || r.status === f.status) && (!f.q || r.full_name.toLowerCase().includes(f.q)) &&
+    (!f.from || new Date(r.created_at) >= f.from) && (!f.to || new Date(r.created_at) < f.to) &&
+    (!studentFilter || (r.student_key === studentFilter.key && r.slug === studentFilter.slug)));
+}
+
+function render() {
+  const rows = filtered().sort((a, b) => {
+    let x = a[sort.key], y = b[sort.key];
+    if (x == null && y == null) return 0;
+    if (x == null) return 1;
+    if (y == null) return -1;
+    if (typeof x === 'string') return sort.dir * x.localeCompare(y, undefined, { numeric: true, sensitivity: 'base' });
+    return sort.dir * (x - y);
+  });
+  document.querySelectorAll('th[data-sort]').forEach(th => {
+    th.textContent = th.textContent.replace(/ [▲▼]$/, '') + (th.dataset.sort === sort.key ? (sort.dir > 0 ? ' ▲' : ' ▼') : '');
+  });
+
+  const students = new Set(rows.map(r => r.student_key)).size;
+  const done = rows.filter(r => r.status === 'completed').length;
+  $('#summary').innerHTML = `<span><b>${rows.length}</b> attempt${rows.length === 1 ? '' : 's'}</span><span><b>${students}</b> student${students === 1 ? '' : 's'}</span><span><b>${done}</b> completed</span>`;
+  $('#empty').classList.toggle('hidden', rows.length > 0);
+  $('#rows').innerHTML = rows.map(r => {
+    const [label, cls] = STATUS[r.status] || [r.status, 'idle'];
+    const details = r.details && Object.keys(r.details).length
+      ? `<details class="details"><summary>View</summary><pre>${esc(formatDetails(r.details))}</pre></details>` : '';
+    return `<tr>
+      <td class="small">${fmtDate(r.created_at)}</td>
+      <td>${esc(r.game_title)}</td>
+      <td><button class="name-link" data-student="${esc(r.student_key)}" data-slug="${esc(r.slug)}" title="Show all attempts by this student">${esc(r.full_name)}</button></td>
+      <td>${esc(r.grade)}</td>
+      <td>${esc(r.section)}</td>
+      <td><span class="badge attempt">${ordinal(r.attempt_no)}</span></td>
+      <td><span class="badge ${cls}">${label}</span></td>
+      <td class="num">${fmtScore(r.score, r.max_score)}</td>
+      <td class="num">${fmtDuration(r.duration_s)}</td>
+      <td>${details}</td>
+      <td><button class="icon-btn" data-delete="${r.id}" title="Delete this attempt" aria-label="Delete this attempt">🗑</button></td>
+    </tr>`;
+  }).join('');
+  updateCsvLink();
+}
+
+function formatDetails(d) {
+  return Object.entries(d).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join('\n');
+}
+
+function updateCsvLink() {
+  const q = new URLSearchParams();
+  const set = (k, v) => { if (v) q.set(k, v); };
+  set('game', $('#fGame').value); set('grade', $('#fGrade').value); set('section', $('#fSection').value);
+  set('status', $('#fStatus').value); set('q', $('#fQ').value.trim());
+  if ($('#fFrom').value) q.set('from', new Date($('#fFrom').value + 'T00:00').toISOString());
+  if ($('#fTo').value) { const t = new Date($('#fTo').value + 'T00:00'); t.setDate(t.getDate() + 1); q.set('to', t.toISOString()); }
+  if (studentFilter) { q.set('student', studentFilter.key); q.set('game', studentFilter.slug); }
+  $('#csvBtn').href = '/api/results.csv' + (q.toString() ? '?' + q : '');
+}
+
+document.querySelectorAll('.filters select, .filters input').forEach(el => el.addEventListener('input', render));
+$('#clearBtn').addEventListener('click', () => {
+  document.querySelectorAll('.filters select, .filters input').forEach(el => { el.value = ''; });
+  clearStudent();
+});
+document.querySelectorAll('th[data-sort]').forEach(th => th.addEventListener('click', () => {
+  const key = th.dataset.sort;
+  sort = { key, dir: sort.key === key ? -sort.dir : (['created_at', 'score', 'attempt_no'].includes(key) ? -1 : 1) };
+  render();
+}));
+
+$('#rows').addEventListener('click', async e => {
+  const name = e.target.closest('[data-student]');
+  if (name) {
+    studentFilter = { key: name.dataset.student, slug: name.dataset.slug };
+    const r = all.find(x => x.student_key === studentFilter.key && x.slug === studentFilter.slug);
+    $('#studentName').textContent = `${r.full_name} (Grade ${r.grade}, Section ${r.section}) in ${r.game_title}`;
+    $('#studentBanner').classList.remove('hidden');
+    sort = { key: 'attempt_no', dir: 1 };
+    render();
+    return;
+  }
+  const del = e.target.closest('[data-delete]');
+  if (del && confirm('Delete this attempt? This cannot be undone.')) {
+    try { await api('/api/results/' + del.dataset.delete, { method: 'DELETE' }); toast('Attempt deleted'); load(); }
+    catch (err) { handleAuthError(err); }
+  }
+});
+
+function clearStudent() {
+  studentFilter = null;
+  $('#studentBanner').classList.add('hidden');
+  sort = { key: 'created_at', dir: -1 };
+  render();
+}
+$('#studentClear').addEventListener('click', clearStudent);
+$('#refreshBtn').addEventListener('click', load);
+
+// Keep the dashboard current during class.
+setInterval(() => { if (!document.hidden && !$('#main').classList.contains('hidden')) load(); }, 30000);
+
+requireLogin(load);
+</script>
+</body>
+</html>
